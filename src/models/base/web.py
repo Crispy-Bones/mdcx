@@ -35,6 +35,7 @@ from requests.exceptions import (
 from models.base.utils import get_user_agent, singleton
 from models.config.config import config
 from models.signals import signal
+from playwright.sync_api import sync_playwright
 
 
 def _allowed_gai_family():
@@ -168,6 +169,73 @@ class WebRequests:
         signal.add_log(f"🔴 请求失败！{error_info}")
         return False, error_info
 
+
+    def get_html_with_playwright(
+        self,
+        url: str,
+        headers=None,
+        cookies=None,
+        proxies=True,
+        allow_redirects=True,
+        json_data=False,
+        content=False,
+        res=False,
+        timeout=False,
+        encoding="utf-8",
+        back_cookie=False,
+    ):
+        # 获取代理信息
+        retry_times = config.retry
+        if proxies:
+            proxies = config.proxies
+        else:
+            proxies = {
+                "http": None,
+                "https": None,
+            }
+
+        if not headers:
+            headers = config.headers
+        if not timeout:
+            timeout = config.timeout
+
+        signal.add_log(f"🔎 请求 {url}")
+        for i in range(int(retry_times)):
+            try:
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(proxy=proxies, headless=False)
+                    context = browser.new_context(headers=headers, accept_downloads=True)
+                    if cookies:
+                        context.add_cookies(cookies)
+                    page = context.new_page()
+                    page.goto(url, timeout=timeout * 1000, wait_until="networkidle" if allow_redirects else "load")
+                    response = page.response
+                    _header = response.headers
+                    if back_cookie:
+                        _header = context.cookies() if context.cookies() else _header
+                    if response.status > 299:
+                        if response.status == 302 and allow_redirects:
+                            pass
+                        else:
+                            error_info = f"{response.status} {url}"
+                            signal.add_log(f"🔴 重试 [{i + 1}/{retry_times}] {error_info}")
+                            continue
+                    else:
+                        signal.add_log(f"✅ 成功 {url}")
+                    if res:
+                        return _header, response
+                    if content:
+                        return _header, page.content()
+                    page.set_content(page.content(), encoding=encoding)
+                    if json_data:
+                        return _header, page.evaluate("() => JSON.parse(document.body.innerText)")
+                    return _header, page.content()
+            except Exception as e:
+                error_info = f"{url}\nError: {e}"
+                signal.add_log(f"[{i + 1}/{retry_times}] {error_info}")
+        signal.add_log(f"🔴 请求失败！{error_info}")
+        return False, error_info
+    
     def post_html(
         self, url: str, data=None, json=None, headers=None, cookies=None, proxies=True, json_data=False, keep=True
     ):
@@ -402,6 +470,7 @@ class WebRequests:
 
 web = WebRequests()
 get_html = web.get_html
+get_html_with_playwright = web.get_html_with_playwright
 post_html = web.post_html
 scraper_html = web.curl_html
 multi_download = web.multi_download
