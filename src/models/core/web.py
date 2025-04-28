@@ -20,7 +20,7 @@ from models.config.config import config
 from models.core.flags import Flags
 from models.core.utils import convert_half
 from models.signals import signal
-
+from datetime import datetime
 
 def get_actorname(number):
     # 获取真实演员名字
@@ -127,7 +127,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
     if originaltitle_amazon_special != originaltitle_amazon:
         originaltitle_amazon_list_temp.append(originaltitle_amazon_special)
     
-    # 以空格位分隔符拆词
+    # 以空格为分隔符拆词
     originaltitle_amazon_list = originaltitle_amazon_list_temp
     for each_title in originaltitle_amazon_list_temp:
         if " " in each_title:
@@ -140,6 +140,8 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                     originaltitle_amazon_list.append(sub_title)
     
     for originaltitle_amazon in originaltitle_amazon_list:
+        # print(f"标题列表: {originaltitle_amazon_list}\n")
+        # print(f"搜索标题: {originaltitle_amazon}\n")
         # 需要两次urlencode，nb_sb_noss表示无推荐来源
         url_search = (
             "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=/s?k="
@@ -164,6 +166,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
             title_result_list = []
             # s-card-container s-overflow-hidden aok-relative puis-wide-grid-style puis-wide-grid-style-t2 puis-expand-height puis-include-content-margin puis s-latency-cf-section s-card-border
             pic_card = html.xpath('//div[@class="a-section a-spacing-base"]')
+            # 检测每个结果
             for each in pic_card:  # tek-077
                 pic_ver_list = each.xpath(
                     'div//a[@class="a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold"]/text()'
@@ -178,7 +181,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                     pic_title = pic_title_list[0]  # 图片标题
                     pic_url = pic_url_list[0]  # 图片链接
                     detail_url = detail_url_list[0]  # 详情页链接（有时带有演员名）
-                    
+                    # print(f"链接内容:\n{pic_ver}\n{pic_title}\n{pic_url}\n{detail_url}\n")
                     # 避免单体作品取到合集结果 GVH-435
                     keywords = ['BEST', '総集編']
                     skip_flag = False
@@ -188,6 +191,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                         if contains_s1 != contains_s2:
                             skip_flag = True
                     if skip_flag:
+                        # print("跳过合集结果")
                         continue
                     if pic_ver in ["DVD", "Software Download"] and ".jpg" in pic_url:  # 无图时是.gif
                         pic_title_half = convert_half(re.sub(r"【.*】", "", pic_title))
@@ -202,6 +206,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                             or has_common_substring(originaltitle_amazon_half,pic_title_half)
                             or has_common_substring(originaltitle_amazon_half_no_actor,pic_title_half_no_actor)
                         ):
+                            # print(f"命中标题:\n{originaltitle_amazon_half}\n{pic_title_half}\n{originaltitle_amazon_half_no_actor}\n{pic_title_half_no_actor}\n")
                             detail_url = urllib.parse.unquote_plus(detail_url)
                             temp_title = re.findall(r"(.+)keywords=", detail_url)
                             temp_detail_url = (
@@ -236,9 +241,12 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
 
             # 当搜索结果命中了标题，没有命中演员时，尝试去详情页获取演员信息
             elif (
-                len(title_result_list) <= 20
+                len(title_result_list) > 0
+                and len(title_result_list) <= 20
                 and "s-pagination-item s-pagination-next s-pagination-button s-pagination-separator" not in html_search
             ):
+                # print(f"尝试去详情页获取演员信息")
+                # print(f"详情页链接：{title_result_list}\n")
                 # 检测前4个结果
                 for each in title_result_list[:4]:
                     try:
@@ -257,8 +265,21 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                         ).replace(" ", "")
                         detail_info_3 = str(html.xpath('//div[@id="productDescription"]//text()')).replace(" ", "")
                         all_info = detail_actor + detail_info_1 + detail_info_2 + detail_info_3
+                        date_text = html.xpath("//span[contains(text(), '発売日')]/following-sibling::span[1]/text()")
+                        formatted_date = datetime.strptime(date_text[0].strip(), "%Y/%m/%d").strftime("%Y-%m-%d") if date_text else ""
+                        release_date = json_data.get('release')
+                        print(f"日期：{formatted_date}")
+                        print(f"release: {json_data.get('release')}'")
+                        release_check = False
+                        if (formatted_date == release_date
+                            or not formatted_date
+                            or not release_date
+                        ):
+                            release_check = True
                         for each_actor in actor_amazon:
-                            if each_actor in all_info:
+                            if (each_actor in all_info
+                                and release_check
+                            ):
                                 w, h = get_imgsize(each[0])
                                 if w > 720 or not w:
                                     return each[0]
