@@ -205,15 +205,19 @@ def replace_special_word(json_data):
             json_data[each] = json_data[each].replace(key, value)
 
 
-def convert_half(string):
-    # 替换敏感词
-    for key, value in config.special_word.items():
-        string = string.replace(key, value)
-    # 替换全角为半角
-    for each in config.full_half_char:
-        string = string.replace(each[0], each[1])
-    # 去除空格等符号
-    return re.sub(r"[\W_]", "", string).upper()
+def convert_half(string, type="all"):
+    if type in ("all", "special"):
+        # 替换敏感词
+        for key, value in config.special_word.items():
+            string = string.replace(key, value)
+    if type in ("all", "half"):
+        # 替换全角为半角
+        for each in config.full_half_char:
+            string = string.replace(each[0], each[1])
+    if type in ("all", "symbol"):
+        # 去除空格等符号
+        return re.sub(r"[\W_]", "", string).upper()
+    return string
 
 
 def get_new_release(release):

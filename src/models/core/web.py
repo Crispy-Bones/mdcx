@@ -104,13 +104,41 @@ def _mutil_extrafanart_download_thread(task):
         json_data["logs"] += f"\n 💡 {extrafanart_name} download failed! ( {extrafanart_url} )"
         return False
 
+def has_common_substring(title1, title2, length=5):
+    # 检查两个字符串的长度是否至少为length
+    if len(title1) < length or len(title2) < length:
+        return False
+    # 生成a的所有长度为length的连续子串，并检查是否存在于b中
+    for i in range(len(title1) - length + 1):
+        substring = title1[i:i+length]
+        if substring in title2:
+            return True
+    return False
 
 def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
     if not originaltitle_amazon or not actor_amazon:
         return ""
     hd_pic_url = ""
     originaltitle_amazon = re.sub(r"【.*】", "", originaltitle_amazon)
-    originaltitle_amazon_list = [originaltitle_amazon]
+    originaltitle_amazon_list_temp = [originaltitle_amazon]
+    
+    # 敏感词替换 APAK-162
+    originaltitle_amazon_special = convert_half(originaltitle_amazon, "special")
+    if originaltitle_amazon_special != originaltitle_amazon:
+        originaltitle_amazon_list_temp.append(originaltitle_amazon_special)
+    
+    # 以空格位分隔符拆词
+    originaltitle_amazon_list = originaltitle_amazon_list_temp
+    for each_title in originaltitle_amazon_list_temp:
+        if " " in each_title:
+            for sub_title in each_title.split(" "):
+                if (
+                    len(sub_title) > 8
+                    or (not sub_title.encode("utf-8").isalnum() and len(sub_title) > 4)
+                    and sub_title not in actor_amazon
+                ):
+                    originaltitle_amazon_list.append(sub_title)
+    
     for originaltitle_amazon in originaltitle_amazon_list:
         # 需要两次urlencode，nb_sb_noss表示无推荐来源
         url_search = (
@@ -120,51 +148,16 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
         )
         result, html_search = get_amazon_data(url_search)
 
-        # 没有结果，尝试拆词，重新搜索
-        if (
-            "キーワードが正しく入力されていても一致する商品がない場合は、別の言葉をお試しください。" in html_search
-            and len(originaltitle_amazon_list) < 2
-        ):
-            for each_name in originaltitle_amazon.split(" "):
-                if each_name not in originaltitle_amazon_list:
-                    if (
-                        len(each_name) > 8
-                        or (not each_name.encode("utf-8").isalnum() and len(each_name) > 4)
-                        and each_name not in actor_amazon
-                    ):
-                        originaltitle_amazon_list.append(each_name)
-            continue
-
-        # 有结果时，检查结果
         if result and html_search:
+            # 无结果 跳过
+            if "検索に一致する商品はありませんでした。" in html_search:
+                continue
             html = etree.fromstring(html_search, etree.HTMLParser())
+            # 全角转半角, 去除标点和空格
             originaltitle_amazon_half = convert_half(originaltitle_amazon)
-            originaltitle_amazon_half_no_actor = originaltitle_amazon_half
-
-            # 标题缩短匹配（如无结果，则使用缩小标题再次搜索）
-            if "検索に一致する商品はありませんでした。" in html_search and len(originaltitle_amazon_list) < 2:
-                short_originaltitle_amazon = html.xpath(
-                    '//div[@class="a-section a-spacing-base a-spacing-top-base"]/span[@class="a-size-base a-color-base"]/text()'
-                )
-                if short_originaltitle_amazon:
-                    short_originaltitle_amazon = short_originaltitle_amazon[0].upper().replace(" DVD", "")
-                    if short_originaltitle_amazon in originaltitle_amazon.upper():
-                        originaltitle_amazon_list.append(short_originaltitle_amazon)
-                        short_originaltitle_amazon = convert_half(short_originaltitle_amazon)
-                        if short_originaltitle_amazon in originaltitle_amazon_half:
-                            originaltitle_amazon_half = short_originaltitle_amazon
-                for each_name in originaltitle_amazon.split(" "):
-                    if each_name not in originaltitle_amazon_list:
-                        if (
-                            len(each_name) > 8
-                            or (not each_name.encode("utf-8").isalnum() and len(each_name) > 4)
-                            and each_name not in actor_amazon
-                        ):
-                            originaltitle_amazon_list.append(each_name)
-
-            # 标题不带演员名匹配
+            # 去除标题的演员名
             for each_actor in actor_amazon:
-                originaltitle_amazon_half_no_actor = originaltitle_amazon_half_no_actor.replace(each_actor.upper(), "")
+                originaltitle_amazon_half_no_actor = originaltitle_amazon_half.replace(each_actor, "")
 
             # 检查搜索结果
             actor_result_list = set()
@@ -185,6 +178,17 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                     pic_title = pic_title_list[0]  # 图片标题
                     pic_url = pic_url_list[0]  # 图片链接
                     detail_url = detail_url_list[0]  # 详情页链接（有时带有演员名）
+                    
+                    # 避免单体作品取到合集结果 GVH-435
+                    keywords = ['BEST', '総集編']
+                    skip_flag = False
+                    for keyword in keywords:
+                        contains_s1 = keyword in originaltitle_amazon.upper()
+                        contains_s2 = keyword in str(pic_title).upper()
+                        if contains_s1 != contains_s2:
+                            skip_flag = True
+                    if skip_flag:
+                        continue
                     if pic_ver in ["DVD", "Software Download"] and ".jpg" in pic_url:  # 无图时是.gif
                         pic_title_half = convert_half(re.sub(r"【.*】", "", pic_title))
                         pic_title_half_no_actor = pic_title_half
@@ -195,6 +199,8 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                         if (
                             originaltitle_amazon_half[:15] in pic_title_half
                             or originaltitle_amazon_half_no_actor[:15] in pic_title_half_no_actor
+                            or has_common_substring(originaltitle_amazon_half,pic_title_half)
+                            or has_common_substring(originaltitle_amazon_half_no_actor,pic_title_half_no_actor)
                         ):
                             detail_url = urllib.parse.unquote_plus(detail_url)
                             temp_title = re.findall(r"(.+)keywords=", detail_url)
@@ -212,9 +218,6 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                                         if w > 600 or not w:
                                             hd_pic_url = url
                                             return hd_pic_url
-                                        else:
-                                            json_data["poster"] = pic_url  # 用于 Google 搜图
-                                            json_data["poster_from"] = "Amazon"
                                     break
                             else:
                                 title_result_list.append([url, "https://www.amazon.co.jp" + detail_url])
@@ -228,10 +231,6 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                         if new_pic_w >= 1770 or (1750 > new_pic_w > 600):  # 不要小图 FCDSS-001，截短的图（1758/1759）
                             pic_w = new_pic_w
                             hd_pic_url = each
-                        else:
-                            json_data["poster"] = each  # 用于 Google 搜图
-                            json_data["poster_from"] = "Amazon"
-
                 if hd_pic_url:
                     return hd_pic_url
 
@@ -240,6 +239,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                 len(title_result_list) <= 20
                 and "s-pagination-item s-pagination-next s-pagination-button s-pagination-separator" not in html_search
             ):
+                # 检测前4个结果
                 for each in title_result_list[:4]:
                     try:
                         url_new = "https://www.amazon.co.jp" + re.findall(r"(/dp/[^/]+)", each[1])[0]
@@ -262,9 +262,6 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                                 w, h = get_imgsize(each[0])
                                 if w > 720 or not w:
                                     return each[0]
-                                else:
-                                    json_data["poster"] = each[0]  # 用于 Google 搜图
-                                    json_data["poster_from"] = "Amazon"
 
             # 有很多结果时（有下一页按钮），加演员名字重新搜索
             if (
@@ -421,8 +418,18 @@ def _get_big_thumb(json_data):
     number_lower_no_line = number_lower_line.replace("-", "")
     thumb_width = 0
 
+    if json_data["cover_from"] == 'dmm':
+        if json_data["cover"]:
+            thumb_width, h = get_imgsize(json_data["cover"])
+            # 对于存在 dmm 2K 横版封面的影片, 直接下载其竖版封面
+            if thumb_width >= 2000:
+                json_data["logs"] += "\n 🖼 HD Thumb found! ({})({}s)".format(
+                    json_data["cover_from"], get_used_time(start_time)
+                )
+                json_data["poster_big"] = True
+                return json_data
     # faleno.jp 番号检查，都是大图，返回即可
-    if json_data["cover_from"] in ["faleno", "dahlia"]:
+    elif json_data["cover_from"] in ["faleno", "dahlia"]:
         if json_data["cover"]:
             json_data["logs"] += "\n 🖼 HD Thumb found! ({})({}s)".format(
                 json_data["cover_from"], get_used_time(start_time)

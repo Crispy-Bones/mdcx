@@ -690,6 +690,7 @@ def get_amazon_data(req_url):
         "accept-encoding": "gzip, deflate, br",
         "Host": "www.amazon.co.jp",
         "User-Agent": get_user_agent(),
+        "Accept-Language": "ja-JP,ja;q=0.9",
     }
     try:
         result, html_info = curl_html(req_url)

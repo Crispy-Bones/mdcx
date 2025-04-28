@@ -148,18 +148,40 @@ def get_director(html):
         result = html.xpath("//th[contains(text(),'監督')]/following-sibling::td/a/text()")
     return result[0] if result else ""
 
+def remove_content(input_string):
+    # 定义关键词列表
+    keywords = [
+        "※ 配信",
+        "初回無料",
+        "＃班長P",
+        "【※画像",
+        "【※この作品",
+        "「コンビニ受取」",
+        "特集 ライブチャット"
+    ]
+    
+    # 构建正则表达式模式
+    pattern = "|".join(re.escape(keyword) for keyword in keywords)
+    
+    # 查找第一个匹配的关键词
+    match = re.search(pattern, input_string)
+    if match:
+        return input_string[:match.start()].strip()  # 截取到匹配点之前的部分
+    
+    # 如果没有找到关键词，则返回原始字符串
+    return input_string.strip()
+
 
 def get_outline(html, real_url):
     result = ""
     if "mono/dvd" in real_url:
         result = html.xpath("normalize-space(string(//div[@class='mg-b20 lh4']/p[@class='mg-b20']))")
-        return result if result else ""
+        result = remove_content(result)
     elif "dmm.co.jp" in real_url:
         result = html.xpath(
             "normalize-space(string(//div[@class='wp-smplex']/preceding-sibling::div[contains(@class, 'mg-b20')][1]))"
         )
-        result = result.split("※ 配信方法")[0]
-        return result.replace("「コンビニ受取」対象商品です。詳しくはこちらをご覧ください。", "").strip()
+        result = remove_content(result)
     return result
 
 
@@ -822,4 +844,5 @@ if __name__ == "__main__":
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
     # print(main('JUX-197'))
+    # print(main('HOKS-182'))
     pass
