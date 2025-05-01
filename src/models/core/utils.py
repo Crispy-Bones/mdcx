@@ -210,13 +210,11 @@ def convert_half(string, type="all"):
         # 替换敏感词
         for key, value in config.special_word.items():
             string = string.replace(key, value)
-    if type in ("all", "half"):
-        # 替换全角为半角
+    if type in ("all", "half_symbol"):
+        # 替换全角为半角, 去除空格等符号
         for each in config.full_half_char:
             string = string.replace(each[0], each[1])
-    if type in ("all", "symbol"):
-        # 去除空格等符号
-        return re.sub(r"[\W_]", "", string).upper()
+        string = re.sub(r"[\W_]", "", string).upper()
     return string
 
 

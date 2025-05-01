@@ -14,6 +14,7 @@ import requests
 import urllib3.util.connection as urllib3_cn
 from PIL import Image
 from ping3 import ping
+import time
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectTimeout,
@@ -511,7 +512,12 @@ class WebRequests:
                     return response.headers, response.text
                 else:
                     error_info = f"{response.status_code} {url}"
-                    signal.add_log(f"🔴 重试 [{i + 1}/{retry_times}] {error_info}")
+                    if response.status_code == 429:
+                        retry_after = (i + 1) * 2
+                        time.sleep(retry_after)
+                        signal.add_log(f"🔴 {retry_after}s后重试 [{i + 1}/{retry_times}] {error_info}")
+                    else:
+                        signal.add_log(f"🔴 重试 [{i + 1}/{retry_times}] {error_info}")
                     continue
             except Exception as e:
                 error_info = f"{url}\nError: {e}"
