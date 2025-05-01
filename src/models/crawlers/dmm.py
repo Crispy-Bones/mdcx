@@ -149,27 +149,34 @@ def get_director(html):
     return result[0] if result else ""
 
 def remove_content(input_string):
-    # 定义关键词列表
+    # 定义关键词列表，支持普通字符串和正则表达式模式
     keywords = [
-        "※ 配信",
+        r"-+ 【50%OFF",
+        "【春のパ",
+        r"【?※",  
         "初回無料",
         "＃班長P",
-        "【※画像",
-        "【※この作品",
         "「コンビニ受取」",
-        "特集 ライブチャット",
-        "『制作·著作"
+        "特集 ライブチャット"
     ]
     
-    # 构建正则表达式模式
-    pattern = "|".join(re.escape(keyword) for keyword in keywords)
+    # 遍历关键词列表，按优先级逐一匹配
+    for keyword in keywords:
+        # 判断是否是正则表达式模式
+        if isinstance(keyword, str) and (keyword.startswith(r"-+") or keyword.startswith(r"【?")):
+            # 如果是正则表达式模式，直接编译
+            pattern = re.compile(keyword)
+        else:
+            # 如果是普通字符串，使用 re.escape 转义后编译
+            pattern = re.compile(re.escape(keyword))
+        
+        # 查找匹配
+        match = pattern.search(input_string)
+        if match:
+            # 如果找到匹配，截取到匹配点之前的部分并返回
+            return input_string[:match.start()].strip()
     
-    # 查找第一个匹配的关键词
-    match = re.search(pattern, input_string)
-    if match:
-        return input_string[:match.start()].strip()  # 截取到匹配点之前的部分
-    
-    # 如果没有找到关键词，则返回原始字符串
+    # 如果没有找到任何关键词，则返回原始字符串
     return input_string.strip()
 
 
@@ -845,5 +852,4 @@ if __name__ == "__main__":
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
     # print(main('JUX-197'))
-    # print(main('HOKS-182'))
     pass

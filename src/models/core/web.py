@@ -530,7 +530,7 @@ def _get_big_thumb(json_data):
         if json_data["cover"]:
             thumb_width, h = get_imgsize(json_data["cover"])
             # 对于存在 dmm 2K 横版封面的影片, 直接下载其竖版封面
-            if thumb_width >= 2000:
+            if thumb_width >= 1700:
                 json_data["logs"] += "\n 🖼 HD Thumb found! ({})({}s)".format(
                     json_data["cover_from"], get_used_time(start_time)
                 )
