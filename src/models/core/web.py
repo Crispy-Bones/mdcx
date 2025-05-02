@@ -104,16 +104,88 @@ def _mutil_extrafanart_download_thread(task):
         json_data["logs"] += f"\n 💡 {extrafanart_name} download failed! ( {extrafanart_url} )"
         return False
 
-def get_halfwidth_no_actor_title(title, actor_list, type="all"):
-    # 将title中的全角字符转换为半角字符, 去除标点与空格, 去除演员名
-    print(f"原始标题: {title}")
-    halfwidth_title = convert_half(title, type)
-    print(f"全角转半角, 去除标点空格: {halfwidth_title}")
+def get_halfwidth_no_actor_title(title, actor_list, operation_flags=0b111):
+    halfwidth_title = convert_half(title, operation_flags)
     for actor in actor_list:
         halfwidth_title = halfwidth_title.replace(actor, "")
     halfwidth_no_actor_title = halfwidth_title.strip()
-    print(f"去除演员名: {halfwidth_no_actor_title}")
     return halfwidth_title, halfwidth_no_actor_title
+
+def split_title(original_title, actor_list, separator=" ", extra_separator=None):
+    """
+    1. 移除标题中【】及其内容；
+    2. 对标题进行敏感词转换，若转换后结果不同则加入结果列表；
+    3. 构建分隔符正则表达式；
+    4. 若原始标题不包含任何分隔符，则直接返回基础标题列表；
+    5. 否则按主分隔符拆分并过滤无效子串；
+    6. 若有额外分隔符，继续按其拆分；
+    7. 最终返回原始标题与敏感词转换后的标题列表，以及所有有效标题片段的去重列表。
+    """
+    
+    # 去除【】内的内容
+    original_title = re.sub(r"【.*?】", "", original_title).strip()
+    
+    # 初始化基础标题列表
+    original_title_base_list = [original_title]
+    
+    # 敏感词替换 APAK-162
+    original_title_special = convert_half(original_title, operation_flags=0b001)
+    if original_title_special != original_title:
+        original_title_base_list.append(original_title_special)
+    
+    # 去重并保持顺序
+    original_title_base_list = list(dict.fromkeys(original_title_base_list))
+    
+    # 构造分隔符的正则表达式模式
+    pattern_parts = []
+    separator_list = [separator]
+    if extra_separator:
+        separator_list.extend(extra_separator.split(","))
+    for each_sep in separator_list:
+        pattern_parts.append(re.escape(each_sep))
+    pattern = "|".join(pattern_parts)
+    
+    # 如果没有匹配到分隔符，直接返回基础标题列表
+    if not re.search(pattern, original_title):
+        return original_title_base_list, original_title_base_list
+    
+    def is_valid_part(part, actor_list):
+        """判断一个片段是否有效"""
+        part = part.strip()
+        if not part:
+            return False
+        if len(part) > 8:
+            return True
+        if len(part) > 4 and not re.search(r"(^[a-zA-Z]+-\d+$)|(^[a-zA-Z0-9]+$)", part):
+            return True
+        return part not in actor_list
+    
+    def split_and_filter(title, sep):
+        """辅助函数：按分隔符拆分标题并过滤无效子串"""
+        parts = title.split(sep)
+        return [part for part in parts if is_valid_part(part, actor_list)]
+    
+    # 先以空格拆分
+    split_title_with_space = []
+    for title in original_title_base_list:
+        split_title_with_space.extend(split_and_filter(title, separator))
+    
+    # 再以额外分隔符拆分
+    if extra_separator:
+        for extra in extra_separator.split(","):
+            split_title_with_extra = []
+            base_titles = split_title_with_space or original_title_base_list
+            for title in base_titles:
+                split_title_with_extra.extend(split_and_filter(title, extra))
+            split_title_with_space.extend(split_title_with_extra)
+    
+    # 合并所有有效标题片段并去重
+    all_titles = original_title_base_list + split_title_with_space
+    original_title_list = list(dict.fromkeys(all_titles))
+    
+    # 返回两个列表
+    return original_title_base_list, original_title_list
+
 
 
 def has_common_substring(title1, title2, length=5):
@@ -186,32 +258,17 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
     hd_pic_url = ""
     print(f"amazon_orginaltitle_actor: {json_data.get('amazon_orginaltitle_actor')}")
     print(f"actor_amazon = {actor_amazon}")
-    originaltitle_amazon = re.sub(r"【.*】", "", originaltitle_amazon)
-    originaltitle_amazon_base_list = [originaltitle_amazon]
-    # 敏感词替换 APAK-162
-    originaltitle_amazon_special = convert_half(originaltitle_amazon, type="special")
-    if originaltitle_amazon_special != originaltitle_amazon:
-        originaltitle_amazon_base_list.append(originaltitle_amazon_special)
-    
-    # 以空格为分隔符拆词
-    originaltitle_amazon_list = originaltitle_amazon_base_list
-    for each_title in originaltitle_amazon_base_list:
-        if " " in each_title:
-            for sub_title in (sub for sub in each_title.split(" ") if sub not in originaltitle_amazon_list):
-                if (
-                    len(sub_title) > 8
-                    or (not re.search(r"(^[a-zA-Z]+-\d+$)|(^[a-zA-Z0-9]+$)", sub_title) and len(sub_title) > 4)
-                    and sub_title not in actor_amazon
-                ):
-                    originaltitle_amazon_list.append(sub_title)
+
+    # 拆分标题
+    originaltitle_amazon_base_list, originaltitle_amazon_list = split_title(originaltitle_amazon, actor_amazon, " ", "…")
     # 图片url过滤集合, 命中直接跳过
     pic_url_filtered_set = set()
     # 标题过滤集合, 命中直接跳过
     pic_title_filtered_set = set()
     # 去除标点空格, 全角转半角后的标题列表
     originaltitle_amazon_halfwidth_no_actor_base_list = []
-    for  each_title in originaltitle_amazon_base_list:
-        originaltitle_amazon_halfwidth_no_actor_base_list.append(get_halfwidth_no_actor_title(each_title, actor_amazon, type="special")[1])
+    for each_title in originaltitle_amazon_base_list:
+        originaltitle_amazon_halfwidth_no_actor_base_list.append(get_halfwidth_no_actor_title(each_title, actor_amazon, operation_flags=0b110)[1])
     print(f"去除标点空格, 全角转半角后的标题列表: {originaltitle_amazon_halfwidth_no_actor_base_list}")
     # 搜索标题
     for originaltitle_amazon in originaltitle_amazon_list:
@@ -241,8 +298,8 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
             pic_card = html.xpath('//div[@class="a-section a-spacing-base"]')
             print(f"找到{len(pic_card)}个结果")
             
-            # 开始处理搜索结果
-            for each in pic_card:  # tek-077
+            # 开始处理搜索结果, 如果结果过多, 只处理前20个结果
+            for each in pic_card[:20]:  # tek-077
                 pic_ver_list = each.xpath(
                     'div//a[@class="a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold"]/text()'
                 )
@@ -296,6 +353,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                         pic_url_filtered_set.add(pic_trunc_url)
                         continue
                     print(f"\n+++++++++++++++++++++++++检测有效链接+++++++++++++++++++++++++")
+                    print(f"搜索标题: {originaltitle_amazon}")
                     print(f"链接内容:\npic_ver = {pic_ver}\npic_title = {pic_title}\npic_trunc_url = {pic_trunc_url}")
                     pic_title_halfwidth = convert_half(re.sub(r"【.*】", "", pic_title))
                     if pic_trunc_url in pic_url_filtered_set:
@@ -333,7 +391,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                                 return hd_pic_url
                         else:
                             # 如果没有命中任何演员，添加到 title_match_list
-                            print(f"没有命中演员, 添加到 title_match_list  做后续详情页匹配")
+                            print(f"没有命中演员, 添加到 title_match_list")
                             title_match_list.append([pic_trunc_url, detail_url_full, pic_title_halfwidth_no_actor])
                             print(f"title_match_list_pic_only = {[element[0] for element in title_match_list]}")
                     else:
@@ -375,10 +433,10 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                 "s-pagination-item s-pagination-next s-pagination-button s-pagination-button-accessibility s-pagination-separator" in html_search
                 or len(title_match_list) > 5
             ):
-                print(f"\n添加演员名再次搜索")
                 amazon_orginaltitle_actor = json_data.get("amazon_orginaltitle_actor")
-                if amazon_orginaltitle_actor and not (amazon_orginaltitle_actor in originaltitle_amazon_base_list[0]):
-                    originaltitle_amazon_list.extend([element + ' ' + amazon_orginaltitle_actor for element in originaltitle_amazon_base_list])
+                if amazon_orginaltitle_actor and not (amazon_orginaltitle_actor in originaltitle_amazon):
+                    print(f"\n添加演员名再次搜索")
+                    originaltitle_amazon_list.extend([originaltitle_amazon + ' ' + amazon_orginaltitle_actor])
 
     return hd_pic_url
 

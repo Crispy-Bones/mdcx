@@ -152,7 +152,7 @@ def remove_content(input_string):
     # 定义关键词列表，支持普通字符串和正则表达式模式
     keywords = [
         r"-+ 【50%OFF",
-        "【春のパ",
+        r"-+ 【春のパ",
         r"【?※",  
         "初回無料",
         "＃班長P",
@@ -851,5 +851,5 @@ if __name__ == "__main__":
     # print(main('ABF-164'))
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
-    # print(main('JUX-197'))
+    # print(main('EBWH-127'))
     pass

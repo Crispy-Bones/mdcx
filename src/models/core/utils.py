@@ -204,17 +204,34 @@ def replace_special_word(json_data):
         for each in all_key_word:
             json_data[each] = json_data[each].replace(key, value)
 
-
-def convert_half(string, type="all"):
-    if type in ("all", "special"):
-        # 替换敏感词
+def convert_half(string, operation_flags=0b111):
+    """
+    对输入字符串进行三种操作，并通过operation_flags控制具体执行哪些操作。
+    
+    参数:
+        string (str): 输入字符串。
+        operation_flags (int): 位掩码，用于控制操作：
+            - 第1位 (0b001): 替换敏感词
+            - 第2位 (0b010): 替换全角为半角
+            - 第3位 (0b100): 去除空格等符号并转为大写
+    
+    返回:
+        str: 处理后的字符串。
+    """
+    # 替换敏感词
+    if operation_flags & 0b001:
         for key, value in config.special_word.items():
             string = string.replace(key, value)
-    if type in ("all", "half_symbol"):
-        # 替换全角为半角, 去除空格等符号
+
+    # 替换全角为半角
+    if operation_flags & 0b010:
         for each in config.full_half_char:
             string = string.replace(each[0], each[1])
+
+    # 去除空格等符号并转为大写
+    if operation_flags & 0b100:
         string = re.sub(r"[\W_]", "", string).upper()
+
     return string
 
 
