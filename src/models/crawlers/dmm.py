@@ -153,7 +153,7 @@ def remove_content(input_string):
     keywords = [
         r"-+ 【50%OFF",
         r"-+ 【春のパ",
-        r"【?※",  
+        r"^(?!^※).*【?※",  
         "初回無料",
         "＃班長P",
         "「コンビニ受取」",
@@ -851,5 +851,5 @@ if __name__ == "__main__":
     # print(main('ABF-164'))
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
-    # print(main('EBWH-127'))
+    print(main('ABF-223'))
     pass

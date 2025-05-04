@@ -104,6 +104,45 @@ def _mutil_extrafanart_download_thread(task):
         json_data["logs"] += f"\n 💡 {extrafanart_name} download failed! ( {extrafanart_url} )"
         return False
 
+
+def get_actor_list(json_data, title, raw_actor_list):
+    """
+    对含有 （）的演员名进行拆分整合, 返回去重列表和标题中的演员名 
+    """
+    print(f"原始标题: {title}\n原始演员列表: {raw_actor_list}")
+    def split_actor(raw_actor_list):
+        # 创建一个空集合用于存储结果
+        actor_set = set()
+        # 遍历列表
+        for item in raw_actor_list:
+            # 使用正则表达式匹配括号内容
+            match = re.match(r"(.+?)[（\(](.+?)[）\)]", item)
+            if match:  # 如果匹配成功
+                name_before_bracket = match.group(1).strip()  # 括号前的内容
+                name_in_bracket = match.group(2).strip()      # 括号内的内容
+                
+                # 将拆分后的两个部分添加到集合中
+                actor_set.add(name_before_bracket)
+                actor_set.add(name_in_bracket)
+            else:
+                # 如果没有括号，直接添加到集合中
+                actor_set.add(item.strip())
+
+        # 将集合转换为列表
+        return list(actor_set)
+    
+    actor_in_title_list = []
+    actor_list = split_actor(raw_actor_list)
+    for item in actor_list:
+        if str(item).upper() in str(title).upper():
+            actor_in_title_list.append(item)
+            break
+    if not actor_in_title_list:
+        amazon_orginaltitle_actor = json_data.get("amazon_orginaltitle_actor")
+        actor_in_title_list = split_actor = ([amazon_orginaltitle_actor])
+    print(f"整合后的演员列表: {actor_list}\n标题中的演员列表: {actor_in_title_list}")
+    return actor_list, actor_in_title_list
+
 def get_halfwidth_no_actor_title(title, actor_list, operation_flags=0b111):
     halfwidth_title = convert_half(title, operation_flags)
     for actor in actor_list:
@@ -124,6 +163,7 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
     
     # 去除【】内的内容
     original_title = re.sub(r"【.*?】", "", original_title).strip()
+    original_title = original_title.replace("（DOD）", "").strip()
     
     # 初始化基础标题列表
     original_title_base_list = [original_title]
@@ -154,11 +194,13 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
         part = part.strip()
         if not part:
             return False
+        if part in actor_list:
+            return False
         if len(part) > 8:
             return True
         if len(part) > 4 and not re.search(r"(^[a-zA-Z]+-\d+$)|(^[a-zA-Z0-9]+$)", part):
             return True
-        return part not in actor_list
+        return False
     
     def split_and_filter(title, sep):
         """辅助函数：按分隔符拆分标题并过滤无效子串"""
@@ -185,8 +227,6 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
     
     # 返回两个列表
     return original_title_base_list, original_title_list
-
-
 
 def has_common_substring(title1, title2, length=5):
     # 检查两个字符串的长度是否至少为length
@@ -256,8 +296,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
     if not originaltitle_amazon or not actor_amazon:
         return ""
     hd_pic_url = ""
-    print(f"amazon_orginaltitle_actor: {json_data.get('amazon_orginaltitle_actor')}")
-    print(f"actor_amazon = {actor_amazon}")
+    actor_amazon, amazon_orginaltitle_actor = get_actor_list(json_data, originaltitle_amazon, actor_amazon)
 
     # 拆分标题
     originaltitle_amazon_base_list, originaltitle_amazon_list = split_title(originaltitle_amazon, actor_amazon, " ", "…")
@@ -269,7 +308,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
     originaltitle_amazon_halfwidth_no_actor_base_list = []
     for each_title in originaltitle_amazon_base_list:
         originaltitle_amazon_halfwidth_no_actor_base_list.append(get_halfwidth_no_actor_title(each_title, actor_amazon, operation_flags=0b110)[1])
-    print(f"去除标点空格, 全角转半角后的标题列表: {originaltitle_amazon_halfwidth_no_actor_base_list}")
+    print(f"去除标点空格和演员名, 全角转半角后的标题列表: {originaltitle_amazon_halfwidth_no_actor_base_list}")
     # 搜索标题
     for originaltitle_amazon in originaltitle_amazon_list:
         print(f"\n/********************开始搜索************************/")
@@ -433,10 +472,11 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                 "s-pagination-item s-pagination-next s-pagination-button s-pagination-button-accessibility s-pagination-separator" in html_search
                 or len(title_match_list) > 5
             ):
-                amazon_orginaltitle_actor = json_data.get("amazon_orginaltitle_actor")
-                if amazon_orginaltitle_actor and not (amazon_orginaltitle_actor in originaltitle_amazon):
+                if amazon_orginaltitle_actor:
+                    for actor in amazon_orginaltitle_actor:
+                        if not (actor in originaltitle_amazon):
+                            originaltitle_amazon_list.extend([originaltitle_amazon + ' ' + actor])
                     print(f"\n添加演员名再次搜索")
-                    originaltitle_amazon_list.extend([originaltitle_amazon + ' ' + amazon_orginaltitle_actor])
 
     return hd_pic_url
 

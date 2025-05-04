@@ -220,8 +220,29 @@ def convert_half(string, operation_flags=0b111):
     """
     # 替换敏感词
     if operation_flags & 0b001:
-        for key, value in config.special_word.items():
-            string = string.replace(key, value)
+        # for key, value in config.special_word.items():
+        #     string = string.replace(key, value)
+    
+        # 创建反向映射字典
+        reverse_special_word = {v: k for k, v in config.special_word.items()}
+        
+        # 合并正向和反向映射
+        all_replacements = {**config.special_word, **reverse_special_word}
+        
+        # 按照键的长度从长到短排序，确保优先匹配更长的词
+        sorted_replacements = sorted(all_replacements.keys(), key=len, reverse=True)
+        
+        # 构造正则表达式模式
+        pattern = re.compile("|".join(map(re.escape, sorted_replacements)))
+        
+        # 替换函数
+        def replace_match(match):
+            matched_word = match.group(0)
+            return all_replacements[matched_word]
+        
+        # 使用正则表达式进行替换
+        string = pattern.sub(replace_match, string)
+    
 
     # 替换全角为半角
     if operation_flags & 0b010:
