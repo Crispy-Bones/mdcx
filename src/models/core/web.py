@@ -162,8 +162,8 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
     """
     
     # 去除【】内的内容
-    original_title = re.sub(r"【.*?】", "", original_title).strip()
-    original_title = original_title.replace("（DOD）", "").strip()
+    pattern = r"【.*?】|（DOD）|（BOD）"
+    original_title = re.sub(pattern, '', original_title).strip()
     
     # 初始化基础标题列表
     original_title_base_list = [original_title]
@@ -443,11 +443,7 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                     pass
                     
             # 当搜索结果命中了标题，没有命中演员时，尝试去详情页获取演员信息
-            if (
-                len(title_match_list) > 0
-                and len(title_match_list) <= 20
-                and "s-pagination-item s-pagination-next s-pagination-button s-pagination-button-accessibility s-pagination-separator" not in html_search
-            ):
+            if len(title_match_list) > 0:
                 print(f"尝试去详情页获取演员信息")
                 # 检测前4个结果
                 title_match_pic_list = []
@@ -467,16 +463,14 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                     pic_url_filtered_set.add(each[0])
                     pic_title_filtered_set.add(pic_title)
                     
-            # 有很多结果时（有下一页按钮），加演员名字重新搜索
-            if (
-                "s-pagination-item s-pagination-next s-pagination-button s-pagination-button-accessibility s-pagination-separator" in html_search
-                or len(title_match_list) > 5
-            ):
-                if amazon_orginaltitle_actor:
-                    for actor in amazon_orginaltitle_actor:
-                        if not (actor in originaltitle_amazon):
-                            originaltitle_amazon_list.extend([originaltitle_amazon + ' ' + actor])
-                    print(f"\n添加演员名再次搜索")
+            # 添加演员名重新搜索
+            if amazon_orginaltitle_actor:
+                for actor in amazon_orginaltitle_actor:
+                    if not (actor in originaltitle_amazon):
+                        title_with_actor = originaltitle_amazon + ' ' + actor
+                        if not (title_with_actor in originaltitle_amazon_list):
+                            originaltitle_amazon_list.extend([title_with_actor])
+                            print(f"\n添加演员名 {actor} 再次搜索")
 
     return hd_pic_url
 
@@ -743,6 +737,7 @@ def _get_big_poster(json_data):
         "有码",
         "有碼",
         "流出",
+        "无码流出",
         "无码破解",
         "無碼破解",
         "里番",

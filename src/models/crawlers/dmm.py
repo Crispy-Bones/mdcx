@@ -8,8 +8,6 @@ from lxml import etree
 
 from models.base.web import check_url, get_dmm_trailer, get_html, get_urls_with_playwright, post_html
 
-from playwright.sync_api import sync_playwright
-
 urllib3.disable_warnings()  # yapf: disable
 
 
@@ -151,19 +149,21 @@ def get_director(html):
 def remove_content(input_string):
     # 定义关键词列表，支持普通字符串和正则表达式模式
     keywords = [
-        r"-+ 【50%OFF",
-        r"-+ 【春のパ",
-        r"^(?!^※).*【?※",  
+        r"---+",
+        "【※", 
+        "＃班長P",
         "初回無料",
         "＃班長P",
-        "「コンビニ受取」",
+        r"★.*★",
+        "※ 配信",
+        "※こちらは",
         "特集 ライブチャット"
     ]
     
     # 遍历关键词列表，按优先级逐一匹配
     for keyword in keywords:
         # 判断是否是正则表达式模式
-        if isinstance(keyword, str) and (keyword.startswith(r"-+") or keyword.startswith(r"【?")):
+        if isinstance(keyword, str) and (keyword.startswith(r"---+") or keyword.startswith(r"★.*★")):
             # 如果是正则表达式模式，直接编译
             pattern = re.compile(keyword)
         else:
@@ -173,6 +173,7 @@ def remove_content(input_string):
         # 查找匹配
         match = pattern.search(input_string)
         if match:
+            # print(f"Found match: {keyword}")
             # 如果找到匹配，截取到匹配点之前的部分并返回
             return input_string[:match.start()].strip()
     
@@ -851,5 +852,5 @@ if __name__ == "__main__":
     # print(main('ABF-164'))
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
-    print(main('ABF-223'))
+    # print(main('ABF-083'))
     pass
