@@ -211,14 +211,14 @@ def convert_half(string, operation_flags=0b111):
     参数:
         string (str): 输入字符串。
         operation_flags (int): 位掩码，用于控制操作：
-            - 第1位 (0b001): 替换敏感词
+            - 第1位 (0b001): 敏感词转换
             - 第2位 (0b010): 替换全角为半角
             - 第3位 (0b100): 去除空格等符号并转为大写
     
     返回:
         str: 处理后的字符串。
     """
-    # 替换敏感词
+    # 字符串含有敏感词时进行屏蔽, 字符串含有屏蔽符号 '●', '○' 时替换为敏感词
     if operation_flags & 0b001:
         # for key, value in config.special_word.items():
         #     string = string.replace(key, value)

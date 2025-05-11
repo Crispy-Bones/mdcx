@@ -104,55 +104,87 @@ def _mutil_extrafanart_download_thread(task):
         json_data["logs"] += f"\n 💡 {extrafanart_name} download failed! ( {extrafanart_url} )"
         return False
 
-
-def get_actor_list(json_data, title, raw_actor_list):
+def _split_actor(raw_actor_list):
     """
-    对含有 （）的演员名进行拆分整合, 返回去重列表和标题中的演员名 
-    """
-    print(f"原始标题: {title}\n原始演员列表: {raw_actor_list}")
-    def split_actor(raw_actor_list):
-        # 创建一个空集合用于存储结果
-        actor_set = set()
-        # 遍历列表
-        for item in raw_actor_list:
-            # 使用正则表达式匹配括号内容
-            match = re.match(r"(.+?)[（\(](.+?)[）\)]", item)
-            if match:  # 如果匹配成功
-                name_before_bracket = match.group(1).strip()  # 括号前的内容
-                name_in_bracket = match.group(2).strip()      # 括号内的内容
-                
-                # 将拆分后的两个部分添加到集合中
-                actor_set.add(name_before_bracket)
-                actor_set.add(name_in_bracket)
-            else:
-                # 如果没有括号，直接添加到集合中
-                actor_set.add(item.strip())
-
-        # 将集合转换为列表
-        return list(actor_set)
+    拆分含有括号的演员名，并返回去重后的演员列表。
     
-    actor_in_title_list = []
-    actor_list = split_actor(raw_actor_list)
-    for item in actor_list:
-        if str(item).upper() in str(title).upper():
-            actor_in_title_list.append(item)
-            break
-    if not actor_in_title_list:
-        amazon_orginaltitle_actor = json_data.get("amazon_orginaltitle_actor")
-        actor_in_title_list = split_actor = ([amazon_orginaltitle_actor])
-    print(f"整合后的演员列表: {actor_list}\n标题中的演员列表: {actor_in_title_list}")
-    return actor_list, actor_in_title_list
-
-def get_halfwidth_no_actor_title(title, actor_list, operation_flags=0b111):
-    halfwidth_title = convert_half(title, operation_flags)
-    for actor in actor_list:
-        halfwidth_title = halfwidth_title.replace(actor, "")
-    halfwidth_no_actor_title = halfwidth_title.strip()
-    return halfwidth_title, halfwidth_no_actor_title
-
-def split_title(original_title, actor_list, separator=" ", extra_separator=None):
+    参数:
+        raw_actor_list (list): 原始演员列表，可能包含带括号的演员名。
+        
+    返回:
+        list: 去重后的演员列表。
     """
-    1. 移除标题中【】及其内容；
+    # 创建一个空集合用于存储结果
+    actor_set = set()
+    # 遍历列表
+    for item in raw_actor_list:
+        # 使用正则表达式匹配括号内容
+        match = re.match(r"(.+?)[（\(](.+?)[）\)]", item)
+        if match:  # 如果匹配成功
+            name_before_bracket = match.group(1).strip()  # 括号前的内容
+            name_in_bracket = match.group(2).strip()      # 括号内的内容
+            
+            # 将拆分后的两个部分添加到集合中
+            actor_set.add(name_before_bracket)
+            actor_set.add(name_in_bracket)
+        else:
+            # 如果没有括号，直接添加到集合中
+            actor_set.add(item.strip())
+
+    # 将集合转换为列表
+    return list(actor_set)
+
+
+def _get_actor_list(json_data, title, raw_actor_list):
+    """
+    对含有括号的演员名进行拆分整合，返回去重演员列表, 并且将最符合的演员名置于首位。
+    
+    参数:
+        json_data (dict): JSON 数据，可能包含 amazon_orginaltitle_actor 字段。
+        title (str): 标题字符串。
+        raw_actor_list (list): 原始演员列表。
+        
+    返回:
+        整合后的演员列表
+    """
+    print(f"原始标题: {title}")
+    print(f"原始演员列表: {raw_actor_list}")
+    
+    raw_actor_in_title = json_data.get("amazon_orginaltitle_actor")
+    print(f"原始标题中的演员: {raw_actor_in_title}")
+    
+    
+    # 调用 _split_actor 函数处理演员列表
+    actor_list = _split_actor(raw_actor_list) if raw_actor_list else []
+    actor_in_title_list = _split_actor([raw_actor_in_title]) if raw_actor_in_title else []
+    
+    # 将标题中的演员名放在首位
+    combined_actor_list = actor_in_title_list + actor_list
+    
+    for actor in combined_actor_list:
+        # 此处的 title已经去除了末尾的演员名, 但是标题中间依然可能包含演员名, 如果匹配则放置首位
+        if actor in title:
+            print(f"标题中的演员名: {actor}")
+            combined_actor_list.insert(0, actor)
+            break
+    
+    # 去重并保持顺序
+    actor_list = list(dict.fromkeys(combined_actor_list))
+    
+    print(f"整合后的演员列表: {actor_list}")
+    return actor_list
+
+
+def _get_compare_title(title, actor_list, operation_flags=0b111):
+    compare_title = convert_half(title, operation_flags)
+    for actor in actor_list:
+        compare_title_no_actor = compare_title.replace(actor, "").strip()
+    return compare_title, compare_title_no_actor
+
+def _split_title(original_title, actor_list, separator=" ", extra_separator=None):
+    """
+    拆分整合标题用作Amazon搜索
+    1. 正则匹配标题中的【.*】并移除
     2. 对标题进行敏感词转换，若转换后结果不同则加入结果列表；
     3. 构建分隔符正则表达式；
     4. 若原始标题不包含任何分隔符，则直接返回基础标题列表；
@@ -161,20 +193,20 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
     7. 最终返回原始标题与敏感词转换后的标题列表，以及所有有效标题片段的去重列表。
     """
     
-    # 去除【】内的内容
+    # 去除【】内的内容, 去除（DOD）, （BOD）
     pattern = r"【.*?】|（DOD）|（BOD）"
     original_title = re.sub(pattern, '', original_title).strip()
     
-    # 初始化基础标题列表
-    original_title_base_list = [original_title]
+    # 初始化原标题列表
+    no_split_title_list = [original_title]
     
-    # 敏感词替换 APAK-162
+    # 敏感词转换
     original_title_special = convert_half(original_title, operation_flags=0b001)
     if original_title_special != original_title:
-        original_title_base_list.append(original_title_special)
+        no_split_title_list.append(original_title_special)
     
     # 去重并保持顺序
-    original_title_base_list = list(dict.fromkeys(original_title_base_list))
+    no_split_title_list = list(dict.fromkeys(no_split_title_list))
     
     # 构造分隔符的正则表达式模式
     pattern_parts = []
@@ -187,10 +219,15 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
     
     # 如果没有匹配到分隔符，直接返回基础标题列表
     if not re.search(pattern, original_title):
-        return original_title_base_list, original_title_base_list
+        return no_split_title_list, no_split_title_list
     
     def is_valid_part(part, actor_list):
-        """判断一个片段是否有效"""
+        """
+        判断一个片段是否有效
+        1. 片段不能为空
+        2. 片段不能为演员名
+        3. 片段长度大于8或长度在4到8之间且不能为纯数字或字母或番号 例如: ABC-123
+        """
         part = part.strip()
         if not part:
             return False
@@ -198,7 +235,7 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
             return False
         if len(part) > 8:
             return True
-        if len(part) > 4 and not re.search(r"(^[a-zA-Z]+-\d+$)|(^[a-zA-Z0-9]+$)", part):
+        if len(part) >= 4 and not re.search(r"(^[a-zA-Z]+-\d+$)|(^[a-zA-Z0-9]+$)", part):
             return True
         return False
     
@@ -209,40 +246,108 @@ def split_title(original_title, actor_list, separator=" ", extra_separator=None)
     
     # 先以空格拆分
     split_title_with_space = []
-    for title in original_title_base_list:
+    for title in no_split_title_list:
         split_title_with_space.extend(split_and_filter(title, separator))
     
     # 再以额外分隔符拆分
     if extra_separator:
         for extra in extra_separator.split(","):
             split_title_with_extra = []
-            base_titles = split_title_with_space or original_title_base_list
+            base_titles = split_title_with_space or no_split_title_list
             for title in base_titles:
                 split_title_with_extra.extend(split_and_filter(title, extra))
             split_title_with_space.extend(split_title_with_extra)
     
     # 合并所有有效标题片段并去重
-    all_titles = original_title_base_list + split_title_with_space
-    original_title_list = list(dict.fromkeys(all_titles))
+    all_titles = no_split_title_list + split_title_with_space
+    search_title_list = list(dict.fromkeys(all_titles))
     
     # 返回两个列表
-    return original_title_base_list, original_title_list
+    return no_split_title_list, search_title_list
 
-def has_common_substring(title1, title2, length=5):
-    # 检查两个字符串的长度是否至少为length
-    print(f"检查字符串匹配情况:\ntitle1: {title1}\ntitle2: {title2}\nlength: {length}")
-    if len(title1) < length or len(title2) < length:
+def _check_title_matching(original_title, amazon_title, trunc_str = 'DVD', length=5):
+    """
+    功能:
+        检测标题是否匹配
+    入参:
+        original_title 是刮削的原标题, amazon_title 是 Amazon标题
+        二者均已经过以下操作:
+        1. 正则去除【.*】
+        2. 全角转半角
+        3. 去除标点空格
+        4. 去除敏感词
+        5. 去除演员名
+    匹配条件(按优先级排列):
+        1. 长字符串长度不能超过短字符串长度的5倍, 避免过短标题匹配到过长标题 JUX-925
+        2. Amazon标题匹配位置一定是首字符 ATID-586
+        3. 短标题完全匹配长标题, 一般为 original_title完全匹配 amazon_title, 因为 amazon_title一般带厂商后缀 VDD-186
+        4. 标题匹配长度 >= length, 视为匹配
+    返回:
+        满足以上匹配条件返回 True, 否则返回 False
+    """
+    original_title = original_title.replace(trunc_str, "").strip()
+    amazon_title = amazon_title.replace(trunc_str, "").strip()
+    # 检查长度限制
+    len_original = len(original_title)
+    len_amazon = len(amazon_title)
+
+    # 长字符串长度不能超过短字符串长度的5倍
+    if max(len_original, len_amazon) > 5 * min(len_original, len_amazon):
         return False
-    # 生成a的所有长度为length的连续子串，并检查是否存在于b中
-    for i in range(len(title1) - length + 1):
-        substring = title1[i:i+length]
-        if substring in title2:
-            return True
+
+    # 短标题完全匹配长标题的开头部分，且匹配位置必须从 amazon_title 的首字符开始
+    short_title, long_title = (original_title, amazon_title) if len_original < len_amazon else (amazon_title, original_title)
+
+    # 如果短标题完全匹配长标题的开头部分，则返回 True
+    # 注意：这里需要确保匹配是从 amazon_title 的首字符开始
+    if long_title.startswith(short_title) and amazon_title.startswith(short_title):
+        return True
+
+    # 检查入参长度是否满足 length 的要求
+    if len_original < length or len_amazon < length:
+        return False
+
+    # 从 amazon_title 首字符开始截取长度为 length 的子串，判断其是否在 original_title 中
+    substring = amazon_title[:length]  # 从 amazon_title 的首字符开始截取
+    if substring in original_title:  # 判断子串是否出现在 original_title 中
+        return True
+
+    # 如果没有满足条件的情况，返回 False
     return False
 
-def check_detail_page(json_data, original_title_list, title_match_ele, actor_amazon):
+def _check_realse_date(json_data, amazon_release = None):
+    """
+    比较影片发行日期与Amazon详情页的发行日期是否一致, 避免同一个演员的相同标题影片被误匹配
+    1. 如果有任何一个日期不存在, 则返回True
+    2. 如果两个日期都存在, 则开始比较
+    3. 如果二者间隔 <=30天返回True, 否则返回False, 这是因为有时候影片发行日期取的是配信日期, 会有一定的差异
+    """
+    print(f"开始检测发行日期是否匹配")
+    movie_release = json_data.get("release")
+    
+    if not amazon_release:
+        print(f"Amazon详情页无发行日期, 跳过检测")
+        return True
+    elif not movie_release:
+        print(f"无影片发行日期, 跳过检测")
+        return True
+    else:
+        # 影片发行日期, 格式为 2024-08-17
+        movie_release_date = datetime.strptime(movie_release, "%Y-%m-%d")
+        print(f"影片发行日期: {movie_release}")
+        # Amazon详情页发行日期, 格式为 2024/8/17
+        amazon_release_date = datetime.strptime(amazon_release, "%Y/%m/%d")
+        print(f"Amazon详情页发行日期: {amazon_release_date.strftime('%Y-%m-%d')}")
+    
+    if abs((movie_release_date - amazon_release_date).days) <= 30:
+        return True
+    return False
+
+def check_detail_page(json_data, title_match_ele, actor_amazon):
     """
     获取amazon的详情页, 检测演员名是否匹配, 发行日期是否吻合
+    返回:
+        布尔值
     """
     detail_url = title_match_ele[1]
     try:
@@ -255,125 +360,134 @@ def check_detail_page(json_data, original_title_list, title_match_ele, actor_ama
     if result and html_detail:
         html = etree.fromstring(html_detail, etree.HTMLParser())
         # 获取演员名
-        detail_actor = str(html.xpath('//span[@class="author notFaded"]/a/text()')).replace(" ", "")
-        detail_info_1 = str(
-            html.xpath('//ul[@class="a-unordered-list a-vertical a-spacing-mini"]//text()')
-        ).replace(" ", "")
-        detail_info_2 = str(
-            html.xpath('//div[@id="detailBulletsWrapper_feature_div"]//text()')
-        ).replace(" ", "")
-        detail_info_3 = str(html.xpath('//div[@id="productDescription"]//text()')).replace(" ", "")
-        all_info = detail_actor + detail_info_1 + detail_info_2 + detail_info_3
+        detail_actor = html.xpath('//span[@class="author notFaded" and .//span[contains(text(), "(出演)")]]//a[@class="a-link-normal"]/text()')
+        # 去除所有空格并过滤掉空字符串
+        raw_detail_actor_list = []
+        for each_actor in detail_actor:
+            if each_actor.strip():
+                each_actor.replace(" ", "")
+                raw_detail_actor_list.extend(each_actor.split("/"))
+        detail_actor_list = _split_actor(raw_detail_actor_list) if raw_detail_actor_list else []
+        print(f"详情页演员列表: {detail_actor_list}")
+        # detail_info_1 = str(
+        #     html.xpath('//ul[@class="a-unordered-list a-vertical a-spacing-mini"]//text()')
+        # ).replace(" ", "")
+        # detail_info_2 = str(
+        #     html.xpath('//div[@id="detailBulletsWrapper_feature_div"]//text()')
+        # ).replace(" ", "")
+        # detail_info_3 = str(html.xpath('//div[@id="productDescription"]//text()')).replace(" ", "")
+        # all_info = detail_actor + detail_info_1 + detail_info_2 + detail_info_3
+        # print(f"详情页信息: {all_info}")
         # 获取发行日期
         date_text = html.xpath("//span[contains(text(), '発売日')]/following-sibling::span[1]/text()")
-        release_amazon = date_text[0].strip() if date_text else "1970/1/1"
-        release_date_amazon = datetime.strptime(release_amazon, "%Y/%m/%d")
-        release_date = datetime.strptime(json_data.get('release'), "%Y-%m-%d")
-        print(f"详情页日期：{release_date_amazon.strftime('%Y-%m-%d')}")
-        print(f"release date: {json_data.get('release')}'")
-        if (abs((release_date_amazon - release_date).days) < 30
-            or release_amazon == "1970/1/1"
-            or not release_date
-        ):
-            for each_actor in actor_amazon:
-                if each_actor in all_info:
-                    print(f"详情页匹配到演员: {each_actor}")
-                    return True, True
-            print(f"详情页未匹配到演员")
-            
-            for each_title in original_title_list:
-                detail_page_title = title_match_ele[2]
-                if has_common_substring(each_title, detail_page_title, 20): # 标题匹配达到20个字符
-                    print(f"标题匹配度高")
-                    return False, True
-            print(f"标题匹配度低")
+        amazon_release = date_text[0].strip() if date_text else ""
+        if _check_realse_date(json_data, amazon_release):
+            if detail_actor_list:
+                for each_actor in actor_amazon:
+                    if each_actor in detail_actor_list:
+                        print(f"详情页匹配到演员: {each_actor}")
+                        return True
+                print(f"详情页演员不匹配, 跳过\n")
+                return False
+            else:
+                print(f"详情页未找到演员, 跳过\n")
+                return False
         else:
-            print(f"发行日期不匹配")
-            return False, False
-    return False, False
+            print(f"发行日期不匹配, 跳过\n")
+            return False
+    print(f"详情页获取失败, 跳过\n")
+    return False
 
-def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
-    if not originaltitle_amazon or not actor_amazon:
+def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
+    # 入参 originaltitle_amazon 已去除末尾的演员名, 但标题中间依然可能包含演员名
+    if not original_title or not raw_actor_list:
         return ""
     hd_pic_url = ""
-    actor_amazon, amazon_orginaltitle_actor = get_actor_list(json_data, originaltitle_amazon, actor_amazon)
+    actor_list = _get_actor_list(json_data, original_title, raw_actor_list)
 
     # 拆分标题
-    originaltitle_amazon_base_list, originaltitle_amazon_list = split_title(originaltitle_amazon, actor_amazon, " ", "…")
-    # 图片url过滤集合, 命中直接跳过
+    no_split_title_list, search_title_list = _split_title(original_title, actor_list, " ", "…")
+    # 图片url过滤集合, 如果匹配直接跳过
     pic_url_filtered_set = set()
-    # 标题过滤集合, 命中直接跳过
-    pic_title_filtered_set = set()
-    # 去除标点空格, 全角转半角后的标题列表
-    originaltitle_amazon_halfwidth_no_actor_base_list = []
-    for each_title in originaltitle_amazon_base_list:
-        originaltitle_amazon_halfwidth_no_actor_base_list.append(get_halfwidth_no_actor_title(each_title, actor_amazon, operation_flags=0b110)[1])
-    print(f"去除标点空格和演员名, 全角转半角后的标题列表: {originaltitle_amazon_halfwidth_no_actor_base_list}")
+    # 标题过滤集合, 如果匹配直接跳过
+    product_title_filtered_set = set()
+    # 无前缀的详情页链接过滤集合, 如果匹配直接跳过
+    detail_url_filtered_set = set()
+    
     # 搜索标题
-    for originaltitle_amazon in originaltitle_amazon_list:
+    for search_title in search_title_list:
         print(f"\n/********************开始搜索************************/")
-        print(f"标题列表: {originaltitle_amazon_list}")
-        print(f"搜索标题: {originaltitle_amazon}")
-        print(f"图片url过滤集合: pic_url_filtered_set = {pic_url_filtered_set}") 
-        print(f"标题过滤集合: pic_title_filtered_set = {pic_title_filtered_set}")
+        print(f"搜索标题总列表:\nsearch_title_list = {search_title_list}")
+        print(f"搜索标题:\nsearch_title = {search_title}")
+        print(f"图片url过滤集合:\npic_url_filtered_set = {pic_url_filtered_set}") 
+        print(f"标题过滤集合:\nproduct_title_filtered_set = {product_title_filtered_set}")
+        # 无效搜索标志
+        invalid_search_flag = False
         # 需要两次urlencode，nb_sb_noss表示无推荐来源
         url_search = (
             "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=/s?k="
-            + urllib.parse.quote_plus(urllib.parse.quote_plus(originaltitle_amazon.replace("&", " ") + " [DVD]"))
+            + urllib.parse.quote_plus(urllib.parse.quote_plus(search_title.replace("&", " ") + " [DVD]"))
             + "&ref=nb_sb_noss"
         )
         result, html_search = get_amazon_data(url_search)
 
         if result and html_search:
-            # 无结果直接跳过
+            # 页面显示 "没有找到与搜索匹配的商品。", 有时下方的推荐商品中会有正确的结果, 但不能保证百分百出现, 可能和cookie有关, 暂时未找到原因, 因此直接跳过
             if "検索に一致する商品はありませんでした。" in html_search:
                 print(f"无搜索结果, 结束本次搜索\n")
                 continue
             html = etree.fromstring(html_search, etree.HTMLParser())
-            originaltitle_amazon_halfwidth, originaltitle_amazon_halfwidth_no_actor = get_halfwidth_no_actor_title(originaltitle_amazon, actor_amazon)
-            # 检查搜索结果
+            compare_title, compare_title_no_actor = _get_compare_title(search_title, actor_list)
+            # 标题匹配列表
             title_match_list = []
-            # s-card-container s-overflow-hidden aok-relative puis-wide-grid-style puis-wide-grid-style-t2 puis-expand-height puis-include-content-margin puis s-latency-cf-section s-card-border
-            pic_card = html.xpath('//div[@class="a-section a-spacing-base"]')
-            print(f"找到{len(pic_card)}个结果")
+            # 计算无效标题的数量, 避免在无效关键词上浪费过多时间
+            invalid_title_count = 0
+            product_result = html.xpath('//div[@class="a-section a-spacing-base"]')
+            print(f"找到{len(product_result)}个结果")
             
-            # 开始处理搜索结果, 如果结果过多, 只处理前20个结果
-            for each in pic_card[:20]:  # tek-077
-                pic_ver_list = each.xpath(
+            # 开始处理搜索结果
+            for each_result in product_result:
+                if invalid_title_count == 5:
+                    print(f"无效标题数量过多, 认定为无效关键词, 结束本次搜索\n")
+                    invalid_search_flag = True
+                    break
+                product_category_list = each_result.xpath(
                     'div//a[@class="a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold"]/text()'
                 )
-                pic_title_list = each.xpath(
+                product_title_list = each_result.xpath(
                     'div//h2[@class="a-size-base-plus a-spacing-none a-color-base a-text-normal"]/span/text()'
                 )
-                pic_url_list = each.xpath('div//div[@class="a-section aok-relative s-image-square-aspect"]/img/@src')
-                detail_url_list = each.xpath('div//a[@class="a-link-normal s-no-outline"]/@href')
+                pic_url_list = each_result.xpath('div//div[@class="a-section aok-relative s-image-square-aspect"]/img/@src')
+                detail_url_list = each_result.xpath('div//a[@class="a-link-normal s-no-outline"]/@href')
                 
-                if len(pic_ver_list) and len(pic_url_list) and (len(pic_title_list) and len(detail_url_list)):
-                    pic_ver = pic_ver_list[0]  # 图片版本
-                    pic_title = pic_title_list[0]  # 图片标题
-                    pic_url = pic_url_list[0]  # 图片链接
+                if len(product_category_list) and len(pic_url_list) and (len(product_title_list) and len(detail_url_list)):
+                    product_category = product_category_list[0]  # 商品类型
+                    product_title = product_title_list[0]  # 商品标题
+                    pic_url = pic_url_list[0]  # 商品图片链接
                     pic_trunc_url = re.sub(r"\._[_]?AC_[^\.]+\.", ".", pic_url) # 去除后缀以获得更高分辨率的图片
-                    detail_url = detail_url_list[0]  # 详情页链接（有时带有演员名）
-
+                    detail_url = detail_url_list[0]  # 商品详情页链接（有时带有演员名）
                     # 去除非 DVD与无图片的结果
-                    if (pic_ver not in ["DVD", "Software Download"]
+                    if (product_category not in ["DVD", "Software Download"]
                         or ".jpg" not in pic_trunc_url
                     ):
-                        print(f"\n无效标题, 跳过: {pic_title}")
+                        print(f"\n无效标题, 跳过: {product_title}")
+                        invalid_title_count += 1
                         print(f"添加到过滤集合")
-                        pic_title_filtered_set.add(pic_title)
+                        product_title_filtered_set.add(product_title)
                         pic_url_filtered_set.add(pic_trunc_url)
                         continue
                     
-                    if pic_title in pic_title_filtered_set:
-                        print(f"\n跳过已过滤的标题: {pic_title}")
+                    if product_title in product_title_filtered_set:
+                        invalid_title_count += 1
+                        print(f"\n跳过已过滤的标题: {product_title}")
                         continue
                     
                     w, h = get_imgsize(pic_trunc_url)
                     if w < 700 or w >= h:
                         print(f"\n图片非高清或非竖版, 跳过: {pic_trunc_url}")
+                        invalid_title_count += 1
                         print(f"添加到过滤集合")
-                        pic_title_filtered_set.add(pic_title)
+                        product_title_filtered_set.add(product_title)
                         pic_url_filtered_set.add(pic_trunc_url)
                         continue
                     
@@ -381,96 +495,91 @@ def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
                     collection_keywords = ['BEST', '時間', '総集編', '完全', '枚組']
                     skip_flag = False
                     for collection_keyword in collection_keywords:
-                        contains_s1 = collection_keyword in str(originaltitle_amazon_halfwidth_no_actor_base_list[0]).upper()
-                        contains_s2 = collection_keyword in str(pic_title).upper()
+                        contains_s1 = collection_keyword in str(search_title_list[0]).upper()
+                        contains_s2 = collection_keyword in str(product_title).upper()
                         if contains_s1 != contains_s2:
                             skip_flag = True
                     if skip_flag:
-                        print(f"\n合集标题, 跳过: {pic_title}")
+                        print(f"\n合集标题, 跳过: {product_title}")
+                        invalid_title_count += 1
                         print(f"添加到过滤集合")
-                        pic_title_filtered_set.add(pic_title)
+                        product_title_filtered_set.add(product_title)
                         pic_url_filtered_set.add(pic_trunc_url)
                         continue
-                    print(f"\n+++++++++++++++++++++++++检测有效链接+++++++++++++++++++++++++")
-                    print(f"搜索标题: {originaltitle_amazon}")
-                    print(f"链接内容:\npic_ver = {pic_ver}\npic_title = {pic_title}\npic_trunc_url = {pic_trunc_url}")
-                    pic_title_halfwidth = convert_half(re.sub(r"【.*】", "", pic_title))
+                    print(f"\n+++++++++++++++++++++++++检测有效结果+++++++++++++++++++++++++")
+                    print(f"搜索标题:\nsearch_title = {search_title}")
+                    print(f"商品信息:\nproduct_category = {product_category}\nproduct_title = {product_title}\npic_trunc_url = {pic_trunc_url}")
                     if pic_trunc_url in pic_url_filtered_set:
                         print(f"\n跳过已过滤的图片url: {pic_trunc_url}")
                         continue
-                    print(f"pic_title去除演员名:")
-                    print(f"pic_title_halfwidth = {pic_title_halfwidth}")
-                    for each_actor in actor_amazon:
-                        pic_title_halfwidth = pic_title_halfwidth.replace(each_actor, "")
-                    pic_title_halfwidth_no_actor = pic_title_halfwidth.strip()
-                    print(f"pic_title_halfwidth_no_actor = {pic_title_halfwidth_no_actor}\n")
+                    product_compare_title, product_compare_title_no_actor = _get_compare_title(re.sub(r"【.*】", "", product_title), actor_list)
+                    print(f"待比较的搜索标题:\ncompare_title = {compare_title}")
+                    print(f"去除演员名后:\ncompare_title_no_actor = {compare_title_no_actor}")
+                    print(f"待比较的商品标题:\nproduct_compare_title = {product_compare_title}")
+                    print(f"去除演员名后:\nproduct_compare_title_no_actor = {product_compare_title_no_actor}")
 
-                    # 判断标题是否命中
+                    # 判断标题是否匹配
                     if (
-                        originaltitle_amazon_halfwidth[:15] in pic_title_halfwidth
-                        or originaltitle_amazon_halfwidth_no_actor[:15] in pic_title_halfwidth_no_actor
-                        or has_common_substring(originaltitle_amazon_halfwidth,pic_title_halfwidth)
-                        or has_common_substring(originaltitle_amazon_halfwidth_no_actor,pic_title_halfwidth_no_actor)
+                        _check_title_matching(compare_title,product_compare_title)
+                        or _check_title_matching(compare_title_no_actor,product_compare_title_no_actor)
                     ):
-                        print(f"命中标题:\noriginaltitle_amazon_halfwidth = {originaltitle_amazon_halfwidth}\npic_title_halfwidth = {pic_title_halfwidth}")
-                        print(f"originaltitle_amazon_halfwidth_no_actor = {originaltitle_amazon_halfwidth_no_actor}\npic_title_halfwidth_no_actor = {pic_title_halfwidth_no_actor}\n")
+                        print(f"标题匹配成功")
                         detail_url = urllib.parse.unquote_plus(detail_url)
                         temp_title = re.findall(r"(.+)keywords=", detail_url)
                         temp_detail_url = (
-                            temp_title[0] + pic_title_halfwidth if temp_title else detail_url + pic_title_halfwidth
+                            temp_title[0] + product_compare_title if temp_title else detail_url + product_compare_title
                         )
                         detail_url_full = "https://www.amazon.co.jp" + detail_url
 
                         # 判断演员是否在标题里，避免同名标题误匹配 MOPP-023
-                        for each_actor in actor_amazon:
+                        for each_actor in actor_list:
                             if each_actor in temp_detail_url:
-                                print(f"命中演员: {each_actor}")
+                                print(f"匹配演员: {each_actor}")
                                 print(f"采用此结果")
                                 hd_pic_url = pic_trunc_url
                                 return hd_pic_url
                         else:
-                            # 如果没有命中任何演员，添加到 title_match_list
-                            print(f"没有命中演员, 添加到 title_match_list")
-                            title_match_list.append([pic_trunc_url, detail_url_full, pic_title_halfwidth_no_actor])
+                            # 如果没有匹配任何演员，添加到 title_match_list
+                            print(f"没有匹配到演员, 添加到 title_match_list")
+                            title_match_list.append([pic_trunc_url, detail_url_full, product_compare_title_no_actor])
                             print(f"title_match_list_pic_only = {[element[0] for element in title_match_list]}")
                     else:
-                        print(f"标题未命中, 跳过: {pic_title}")
+                        print(f"标题不匹配, 跳过: {product_title}")
+                        invalid_title_count += 1
                         print(f"添加到过滤集合")
-                        pic_title_filtered_set.add(pic_title)
+                        product_title_filtered_set.add(product_title)
                         pic_url_filtered_set.add(pic_trunc_url)
                 else:
                     print(f"\n跳过不包含类型, 图片, 标题, 详情页面的结果")
+                    invalid_title_count += 1
                     pass
                     
-            # 当搜索结果命中了标题，没有命中演员时，尝试去详情页获取演员信息
-            if len(title_match_list) > 0:
-                print(f"尝试去详情页获取演员信息")
-                # 检测前4个结果
-                title_match_pic_list = []
+            # 当搜索结果匹配到标题，没有匹配到演员时，尝试去详情页获取演员信息
+            if (
+                not invalid_search_flag
+                and len(title_match_list) > 0
+            ):
+                print(f"尝试去详情页获取演员信息, 尝试最多4个结果")
                 for each in title_match_list[:4]:
-                    actor_match, title_match =  check_detail_page(json_data, originaltitle_amazon_halfwidth_no_actor_base_list, each, actor_amazon)
-                    if actor_match:
+                    detail_page_match =  check_detail_page(json_data, each, actor_list)
+                    if detail_page_match:
                         print(f"详情页检测通过, 采用此结果")
                         return each[0]
-                    elif title_match:
-                        title_match_pic_list.append(each[0])
-                if len(title_match_pic_list) > 0:
-                    print(f"采用第一个标题匹配度高的结果")
-                    return title_match_pic_list[0]
-                else:
-                    print(f"详情页检测未通过, 添加到过滤集合")
-                    print(f"详情页标题: pic_title = {pic_title}")
-                    pic_url_filtered_set.add(each[0])
-                    pic_title_filtered_set.add(pic_title)
+                    else:
+                        # 只添加图片url, 因为标题已经匹配, 否则添加演员名搜索时会过滤掉有效标题
+                        print(f"详情页检测未通过, 将图片url添加到过滤集合")
+                        pic_url_filtered_set.add(each[0])
                     
             # 添加演员名重新搜索
-            if amazon_orginaltitle_actor:
-                for actor in amazon_orginaltitle_actor:
-                    if not (actor in originaltitle_amazon):
-                        title_with_actor = originaltitle_amazon + ' ' + actor
-                        if not (title_with_actor in originaltitle_amazon_list):
-                            originaltitle_amazon_list.extend([title_with_actor])
-                            print(f"\n添加演员名 {actor} 再次搜索")
+            actor_add_in_title = actor_list[0]
+            if (
+                actor_add_in_title
+                and actor_add_in_title not in search_title
+            ):
+                title_with_actor = search_title + ' ' + actor_add_in_title
+                if title_with_actor not in search_title_list:
+                    search_title_list.extend([title_with_actor])
+                    print(f"添加演员名 {actor_add_in_title} 至待搜索列表")
 
     return hd_pic_url
 

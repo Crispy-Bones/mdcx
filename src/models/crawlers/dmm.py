@@ -157,7 +157,7 @@ def remove_content(input_string):
         r"★.*★",
         "※ 配信",
         "※こちらは",
-        "特集 ライブチャット"
+        "特集"
     ]
     
     # 遍历关键词列表，按优先级逐一匹配
@@ -239,7 +239,6 @@ def get_real_url(url_list, number, number2, file_path):
     # /cid=snis126/ /cid=snis900/ 图上面没有蓝光水印
     # /cid=h_346rebdb00017/
     # /cid=6snis027/ /cid=7snis900/
-
     number1 = number_temp.replace("000", "")
     number_pre = re.compile(f"(?<=[=0-9]){number_temp[:3]}")
     number_end = re.compile(f"{number_temp[-3:]}(?=(-[0-9])|([a-z]*)?[/&])")
@@ -852,5 +851,5 @@ if __name__ == "__main__":
     # print(main('ABF-164'))
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
-    # print(main('ABF-083'))
+    # print(main('HODV-21938'))
     pass
