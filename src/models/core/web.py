@@ -107,10 +107,8 @@ def _mutil_extrafanart_download_thread(task):
 def _split_actor(raw_actor_list):
     """
     拆分含有括号的演员名，并返回去重后的演员列表。
-    
     参数:
-        raw_actor_list (list): 原始演员列表，可能包含带括号的演员名。
-        
+        raw_actor_list (list): 原始演员列表, 可能包含带括号的演员名
     返回:
         list: 去重后的演员列表。
     """
@@ -138,12 +136,10 @@ def _split_actor(raw_actor_list):
 def _get_actor_list(json_data, title, raw_actor_list):
     """
     对含有括号的演员名进行拆分整合，返回去重演员列表, 并且将最符合的演员名置于首位。
-    
-    参数:
-        json_data (dict): JSON 数据，可能包含 amazon_orginaltitle_actor 字段。
-        title (str): 标题字符串。
-        raw_actor_list (list): 原始演员列表。
-        
+    入参:
+        json_data (dict): 刮削获得的JSON数据
+        title (str): 刮削获得的原标题
+        raw_actor_list (list): 刮削获得的原始演员列表
     返回:
         整合后的演员列表
     """
@@ -219,7 +215,7 @@ def _split_title(original_title, actor_list, separator=" ", extra_separator=None
     
     # 如果没有匹配到分隔符，直接返回基础标题列表
     if not re.search(pattern, original_title):
-        return no_split_title_list, no_split_title_list
+        return no_split_title_list
     
     def is_valid_part(part, actor_list):
         """
@@ -263,7 +259,7 @@ def _split_title(original_title, actor_list, separator=" ", extra_separator=None
     search_title_list = list(dict.fromkeys(all_titles))
     
     # 返回两个列表
-    return no_split_title_list, search_title_list
+    return search_title_list
 
 def _check_title_matching(original_title, amazon_title, trunc_str = 'DVD', length=5):
     """
@@ -343,7 +339,7 @@ def _check_realse_date(json_data, amazon_release = None):
         return True
     return False
 
-def check_detail_page(json_data, title_match_ele, actor_amazon):
+def _check_detail_page(json_data, title_match_ele, actor_amazon):
     """
     获取amazon的详情页, 检测演员名是否匹配, 发行日期是否吻合
     返回:
@@ -399,20 +395,18 @@ def check_detail_page(json_data, title_match_ele, actor_amazon):
     return False
 
 def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
-    # 入参 originaltitle_amazon 已去除末尾的演员名, 但标题中间依然可能包含演员名
+    # 入参 original_title 已去除末尾的演员名, 但标题中间依然可能包含演员名
     if not original_title or not raw_actor_list:
         return ""
     hd_pic_url = ""
     actor_list = _get_actor_list(json_data, original_title, raw_actor_list)
 
     # 拆分标题
-    no_split_title_list, search_title_list = _split_title(original_title, actor_list, " ", "…")
+    search_title_list = _split_title(original_title, actor_list, " ", "…")
     # 图片url过滤集合, 如果匹配直接跳过
     pic_url_filtered_set = set()
     # 标题过滤集合, 如果匹配直接跳过
     product_title_filtered_set = set()
-    # 无前缀的详情页链接过滤集合, 如果匹配直接跳过
-    detail_url_filtered_set = set()
     
     # 搜索标题
     for search_title in search_title_list:
@@ -561,7 +555,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
             ):
                 print(f"尝试去详情页获取演员信息, 尝试最多4个结果")
                 for each in title_match_list[:4]:
-                    detail_page_match =  check_detail_page(json_data, each, actor_list)
+                    detail_page_match =  _check_detail_page(json_data, each, actor_list)
                     if detail_page_match:
                         print(f"详情页检测通过, 采用此结果")
                         return each[0]
@@ -730,6 +724,7 @@ def _get_big_thumb(json_data):
     if json_data["cover_from"] == 'dmm':
         if json_data["cover"]:
             thumb_width, h = get_imgsize(json_data["cover"])
+            print(f"dmm thumb_width = {thumb_width}")
             # 对于存在 dmm 2K 横版封面的影片, 直接下载其竖版封面
             if thumb_width >= 1700:
                 json_data["logs"] += "\n 🖼 HD Thumb found! ({})({}s)".format(

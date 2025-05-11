@@ -770,9 +770,9 @@ def get_imgsize(url):
                         img = Image.open(file_head)
                         return img.size
                     except:
-                        return 0, 0
+                        continue
         except:
-            return 0, 0
+            continue
     return 0, 0
 
 
