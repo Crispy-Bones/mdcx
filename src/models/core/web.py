@@ -261,9 +261,9 @@ def _split_title(original_title, actor_list, separator=" ", extra_separator=None
     
     # 再以额外分隔符拆分
     if extra_separator:
+        base_titles = split_title_with_space.copy() or no_split_title_list.copy()
         for extra in extra_separator.split(","):
             split_title_with_extra = []
-            base_titles = split_title_with_space or no_split_title_list
             for title in base_titles:
                 split_title_with_extra.extend(split_and_filter(title, extra))
             split_title_with_space.extend(split_title_with_extra)
@@ -429,7 +429,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
     actor_list = _get_actor_list(json_data, original_title, raw_actor_list)
 
     # 拆分标题
-    search_title_list = _split_title(original_title, actor_list, " ", "…")
+    search_title_list = _split_title(original_title, actor_list, " ", "！,…")
     # 图片url过滤集合, 如果匹配直接跳过
     pic_url_filtered_set = set()
     # 标题过滤集合, 如果匹配直接跳过
@@ -442,6 +442,13 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
         print(f"搜索标题:\nsearch_title = {search_title}")
         print(f"图片url过滤集合:\npic_url_filtered_set = {pic_url_filtered_set}") 
         print(f"标题过滤集合:\nproduct_title_filtered_set = {product_title_filtered_set}")
+        if (
+            search_title == search_title_list[0]
+            and len(search_title) <= 3
+        ):
+            print(f"原始标题过短, 跳过: {search_title}")
+            print(f"搜索包含演员名的原始标题")
+            continue
         # 无效搜索标志
         invalid_search_flag = False
         # 需要两次urlencode，nb_sb_noss表示无推荐来源

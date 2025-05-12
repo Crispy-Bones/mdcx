@@ -247,8 +247,14 @@ class WebRequests:
                         signal.add_log(f"🔎 请求 {url}")
                         page.goto(url, wait_until="domcontentloaded", timeout=timeout)
                         
+                        # 停留 5 秒钟 (5000 毫秒)
+                        # page.wait_for_timeout(5000)
+                        
                         # 获取实际加载的页面 URL
-                        page_url = page.url + "/"
+                        if not page.url.endswith("/"):
+                            page_url = page.url + "/"
+                        else:
+                            page_url = page.url
                         
                         # 判断是否发生重定向
                         if page_url != url:
