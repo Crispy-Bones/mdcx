@@ -18,7 +18,7 @@ from models.base.utils import convert_path, get_used_time
 from models.config.config import config
 from models.config.resources import resources
 from models.signals import signal
-
+from itertools import product
 
 def replace_word(json_data):
     # 常见字段替换的字符
@@ -202,58 +202,137 @@ def replace_special_word(json_data):
     ]
     for key, value in config.special_word.items():
         for each in all_key_word:
-            json_data[each] = json_data[each].replace(key, value)
+            json_data[each] = json_data[each].replace(key, value[0])
 
 def convert_half(string, operation_flags=0b111):
     """
-    对输入字符串进行三种操作，并通过operation_flags控制具体执行哪些操作。
+    对输入字符串进行多阶段文本处理，处理流程由操作标志位控制
     
     参数:
-        string (str): 输入字符串。
-        operation_flags (int): 位掩码，用于控制操作：
-            - 第1位 (0b001): 敏感词转换
-            - 第2位 (0b010): 替换全角为半角
-            - 第3位 (0b100): 去除空格等符号并转为大写
+        string (str): 输入字符串
+        operation_flags (int): 位标志控制处理流程（默认执行全部操作）
+            - 0b001（1）: 敏感词替换（包含模糊字符处理）
+            - 0b010（2）: 全角转半角字符
+            - 0b100（4）: 清理格式并转为大写
     
     返回:
-        str: 处理后的字符串。
+        list: 处理后的字符串列表，元素为所有可能的转换结果
     """
-    # 字符串含有敏感词时进行屏蔽, 字符串含有屏蔽符号 '●', '○' 时替换为敏感词
+    
+    def generate_normalized_mapping(special_word):
+        """
+        生成标准化映射关系，处理包含模糊字符（●/○）的敏感词
+        
+        参数:
+            special_word (dict): 原始敏感词映射表
+            
+        返回:
+            dict: 处理后的映射字典，格式为：
+                {
+                    "原始词": ["替换目标1", "替换目标2"],
+                    "替换目标1": ["标准化结果"],
+                    ...
+                }
+        """
+        normalized = {}
+        for key, values in special_word.items():
+            for v in values:
+                # 处理包含模糊字符的键
+                if "●" in key or "○" in key:
+                    # 确定模糊字符位置
+                    index = key.index("●") if "●" in key else key.index("○")
+                    # 生成标准化结果（删除模糊字符对应位置的字符）
+                    normalized_target = v[:index] + v[index+1:] if index < len(v) else v
+                    # 建立双向映射关系
+                    normalized.setdefault(key, set()).add(normalized_target)
+                    normalized.setdefault(v, set()).add(normalized_target)
+        return {k: list(v) for k, v in normalized.items()} if normalized else {}
+    # 初始结果集（使用集合避免重复）
+    results = {string}
+    # 阶段1：敏感词替换处理（当操作标志包含0b001时执行）
     if operation_flags & 0b001:
-        # for key, value in config.special_word.items():
-        #     string = string.replace(key, value)
-    
-        # 创建反向映射字典
-        reverse_special_word = {v: k for k, v in config.special_word.items()}
+        # 构建反向映射字典（目标词 -> 可能的替换词列表）
+        reverse_special_word = {}
+        for key, value in config.special_word.items():
+            # 统一处理为元组格式
+            targets = value if isinstance(value, (tuple, list)) else (value,)
+            
+            # 为每个目标词生成两种可能的键（包含●和○）
+            for target in targets:
+                key_circle = key.replace("●", "○")  # 生成○版本
+                for k in [key, key_circle]:        # 同时注册两种形式
+                    reverse_special_word.setdefault(target, []).append(k)
+        # 构建完整替换字典（包含正向和反向映射）
+        all_replacements = {}
+        # 添加正向映射
+        for key, value in config.special_word.items():
+            targets = value if isinstance(value, (tuple, list)) else (value,)
+            all_replacements[key] = targets
         
-        # 合并正向和反向映射
-        all_replacements = {**config.special_word, **reverse_special_word}
+        # 合并反向映射到替换字典
+        for key, targets in reverse_special_word.items():
+            existing = set(all_replacements.get(key, ()))
+            existing.update(targets)
+            all_replacements[key] = tuple(existing)
+        # 根据操作模式选择映射策略
+        replacements = (
+            generate_normalized_mapping(all_replacements)  # 全处理模式需要标准化
+            if operation_flags == 0b111 
+            else {k: list(v) for k, v in all_replacements.items()}  # 普通模式直接使用
+        )
+        # 预处理输入字符串：统一模糊字符为●
+        processed_str = string.replace("○", "●")
         
-        # 按照键的长度从长到短排序，确保优先匹配更长的词
-        sorted_replacements = sorted(all_replacements.keys(), key=len, reverse=True)
+        # 构建正则表达式模式（按长度降序排列，确保最长匹配优先）
+        sorted_patterns = sorted(replacements.keys(), key=lambda x: (-len(x), x))
+        pattern = re.compile("|".join(map(re.escape, sorted_patterns)))
+        matches = list(pattern.finditer(processed_str))
+        # 处理匹配结果
+        results = set()
+        if matches:
+            # 判断是否处于全处理模式（需要过滤模糊字符）
+            filter_special = (operation_flags == 0b111)
+            replacement_options = []
+            
+            # 收集每个匹配点的替换选项
+            for m in matches:
+                key = m.group()
+                candidates = replacements.get(key, [])
+                # 全处理模式需要过滤带模糊字符的选项
+                filtered = [repl for repl in candidates 
+                            if not filter_special or ("●" not in repl and "○" not in repl)]
+                replacement_options.append(filtered)
+            
+            # 生成所有可能的替换组合
+            for combo in product(*replacement_options):
+                temp_str = string  # 使用原始字符串保留○符号
+                # 反向处理匹配项（避免替换位置偏移）
+                for m, repl in zip(reversed(matches), reversed(combo)):
+                    start, end = m.span()
+                    temp_str = temp_str[:start] + repl + temp_str[end:]
+                results.add(temp_str)
+        else:
+            results.add(string)  # 无匹配时保留原字符串
         
-        # 构造正则表达式模式
-        pattern = re.compile("|".join(map(re.escape, sorted_replacements)))
-        
-        # 替换函数
-        def replace_match(match):
-            matched_word = match.group(0)
-            return all_replacements[matched_word]
-        
-        # 使用正则表达式进行替换
-        string = pattern.sub(replace_match, string)
-    
-
-    # 替换全角为半角
+        # 转换为列表形式
+        results = list(results)
+    # 初始化转换列表
+    conver_list = results if isinstance(results, list) else [results]
+    # 阶段2：全角转半角处理（当操作标志包含0b010时执行）
     if operation_flags & 0b010:
-        for each in config.full_half_char:
-            string = string.replace(each[0], each[1])
-
-    # 去除空格等符号并转为大写
+        # 使用循环逐一替换多字符映射
+        for i, s in enumerate(conver_list):
+            for full, half in config.full_half_char:
+                s = s.replace(full, half)
+            conver_list[i] = s  # 更新转换列表
+    # 阶段3：格式清理和大写转换（当操作标志包含0b100时执行）
     if operation_flags & 0b100:
-        string = re.sub(r"[\W_]", "", string).upper()
-
-    return string
+        conver_list = [
+            # 移除非单词字符（保留字母数字）并转为大写
+            re.sub(r"[\W_]+", "", s).upper()
+            for s in conver_list
+        ]
+    return conver_list
 
 
 def get_new_release(release):
