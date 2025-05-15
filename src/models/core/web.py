@@ -465,7 +465,10 @@ def _check_realse_date(json_data, amazon_title, promotion_keywords=[], amazon_re
     4. 如果二者间隔 >30天, 但影片标题中包含促销推广关键字, 则不认为日期不一致
     """
     print(f"开始检测发行日期是否匹配")
-    movie_release = json_data.get("release")
+    if json_data.get("release") == "0000-00-00":
+        movie_release = "1970-01-01"
+    else:
+        movie_release = json_data.get("release")
     
     if not amazon_release:
         print(f"Amazon详情页无发行日期, 跳过此检测")
@@ -656,9 +659,12 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                     collection_keywords = ['BEST', '時間', '総集編', '完全', '枚組']
                     skip_flag = False
                     for collection_keyword in collection_keywords:
-                        contains_s1 = collection_keyword in str(no_split_title_list[0]).upper()
-                        contains_s2 = collection_keyword in str(amazon_title).upper()
-                        if contains_s1 != contains_s2:
+                        is_collection1 = collection_keyword in str(no_split_title_list[0]).upper()
+                        is_collection2 = collection_keyword in str(amazon_title).upper()
+                        if (
+                            (not is_collection1) # 刮削影片非合集
+                            and is_collection2   # 搜索结果为合集
+                            ):
                             skip_flag = True
                     if skip_flag:
                         print(f"\n合集标题, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
