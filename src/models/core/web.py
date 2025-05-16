@@ -462,18 +462,15 @@ def _check_realse_date(json_data, amazon_title, promotion_keywords=[], amazon_re
     1. 如果有任何一个日期不存在, 则返回True
     2. 如果两个日期都存在, 则开始比较
     3. 如果二者间隔 <=30天返回True, 否则返回False, 这是因为有时候影片发行日期取的是配信日期, 会有一定的差异
-    4. 如果二者间隔 >30天, 但影片标题中包含促销推广关键字, 则不认为日期不一致
+    4. 如果二者间隔 >30天, 但Amazon影片标题中包含促销推广关键字, 则不认为日期不一致
     """
     print(f"开始检测发行日期是否匹配")
-    if json_data.get("release") == "0000-00-00":
-        movie_release = "1970-01-01"
-    else:
-        movie_release = json_data.get("release")
+    movie_release = json_data.get("release")
     
     if not amazon_release:
         print(f"Amazon详情页无发行日期, 跳过此检测")
         return "NO RELEASE DATE"
-    elif not movie_release:
+    elif movie_release == "0000-00-00":
         print(f"无影片发行日期, 跳过此检测")
         return "NO RELEASE DATE"
     else:
@@ -488,7 +485,7 @@ def _check_realse_date(json_data, amazon_title, promotion_keywords=[], amazon_re
     if date_diff <= 30:
         return "SUCCESS"
     elif any(promotion in amazon_title for promotion in promotion_keywords):
-        print(f"影片发行日期与Amazon详情页的发行日期有差异, 但影片标题中包含促销推广关键字, 跳过此检测")
+        print(f"发行日期差异过大, 但Amazon影片标题中包含促销推广关键字, 跳过此检测")
         return "PROMOTION"
     return "ERROR"
 
@@ -536,7 +533,7 @@ def _check_detail_page(json_data, title_match_ele, actor_amazon):
         # detail_info_3 = str(html.xpath('//div[@id="productDescription"]//text()')).replace(" ", "")
         # all_info = detail_actor + detail_info_1 + detail_info_2 + detail_info_3
 
-        # 获取发行日期
+        # 获取发行日期, 即DVD类型影片的発売日, 对于software download, 即流媒体类型, 只有影片的流媒体版本在Amazon的上架日期, 因此不予采纳
         date_text = html.xpath("//span[contains(text(), '発売日')]/following-sibling::span[1]/text()")
         amazon_release = date_text[0].strip() if date_text else ""
         check_release = _check_realse_date(json_data, amazon_title, promotion_keywords, amazon_release)
