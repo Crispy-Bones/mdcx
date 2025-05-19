@@ -592,6 +592,8 @@ def _deal_each_field(all_json_data, json_data, website_list, field_name, field_c
             json_data[field_name] = web_data_json[field_name]
             json_data["fields_info"] += "\n     " + "%-13s" % field_name + f": {website} ({title_language})"
             json_data["log_info"] += f"\n    🟢 {website} (成功)\n     ↳ {json_data[field_name]}"
+            json_data["amazon_studio"] = json_data["studio"]
+            json_data["amazon_publisher"] = json_data["publisher"]
             break
         else:
             json_data["log_info"] += f"\n    🔴 {website} (失败)"

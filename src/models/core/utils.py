@@ -317,7 +317,12 @@ def convert_half(string, operation_flags=0b111):
         # 转换为列表形式
         results = list(results)
     # 初始化转换列表
-    conver_list = results if isinstance(results, list) else [results]
+    if isinstance(results, set):  # 如果 results 是集合，转换为列表
+        conver_list = list(results)
+    elif isinstance(results, list):  # 如果 results 已经是列表，直接使用
+        conver_list = results
+    else:  # 其他情况（如单个字符串），将其包装为列表
+        conver_list = [results]
     # 阶段2：全角转半角处理（当操作标志包含0b010时执行）
     if operation_flags & 0b010:
         # 使用循环逐一替换多字符映射

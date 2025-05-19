@@ -644,10 +644,10 @@ def scrape(file_mode: FileMode, movie_list):
     signal.exec_set_processbar.emit(0)
     signal.set_label_file_path.emit(f"🎉 恭喜！全部刮削完成！共 {count_all} 个文件！用时 {used_time} 秒")
     signal.show_traceback_log(
-        f"🎉 All finished!!! Total {count_all} , Success {Flags.succ_count} , Failed {Flags.fail_count} "
+        f"🎉 All finished!!! Total {count_all} , Success {Flags.succ_count} , Failed {Flags.fail_count} \n"
     )
     signal.show_log_text(
-        f" 🎉🎉🎉 All finished!!! Total {count_all} , Success {Flags.succ_count} , Failed {Flags.fail_count} "
+        f" 🎉🎉🎉 All finished!!! Total {count_all} , Success {Flags.succ_count} , Failed {Flags.fail_count} \n"
     )
     signal.show_log_text("================================================================================")
     if Flags.failed_list:
