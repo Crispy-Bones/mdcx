@@ -516,9 +516,17 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
     image_download = False
     image_cut = "right"
     dic = {}
-    digital = re.findall(r"[A-Za-z]+-?(\d+)", number)
-    if digital and len(digital[0]) >= 5 and digital[0].startswith("00"):
-        number = number.replace(digital[0], digital[0][2:])
+    print(f"number = {number}")
+    if x := re.findall(r"[A-Za-z]+-?(\d+)", number):
+        digits = x[0]
+        print(f"digits = {digits}")
+        if len(digits) >= 5:
+            if digits.startswith("00"):
+                number = number.replace(digits, digits[2:])
+            else:
+                number = number.replace("-", "")
+        elif len(digits) == 4:
+            number = number.replace("-", "0")  # DSVR-1698 -> dsvr01698 https://github.com/sqzw-x/mdcx/issues/393
     number_00 = number.lower().replace("-", "00")  # 搜索结果多，但snis-027没结果
     number_no_00 = number.lower().replace("-", "")  # 搜索结果少
     web_info = "\n       "
