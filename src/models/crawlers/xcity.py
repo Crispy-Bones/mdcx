@@ -301,6 +301,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 
 
 if __name__ == "__main__":
-    print(
-        main("STVF010")
-    )  # print(main('MXGS563'))  # print(main('xc-1280'))  # print(main('xv-163'))  # print(main('sea-081'))  # print(main('IA-28'))  # print(main('xc-1298'))  # print(main('DMOW185'))  # print(main('EMOT007'))  # print(main('EMOT007', "https://xcity.jp/avod/detail/?id=147036"))
+    # print(main("STVF010"))  # print(main('MXGS563'))  # print(main('xc-1280'))  # print(main('xv-163'))  # print(main('sea-081'))  # print(main('IA-28'))  # print(main('xc-1298'))  # print(main('DMOW185'))  # print(main('EMOT007'))  # print(main('EMOT007', "https://xcity.jp/avod/detail/?id=147036"))
+    pass

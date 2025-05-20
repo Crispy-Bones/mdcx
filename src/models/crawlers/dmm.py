@@ -516,18 +516,13 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
     image_download = False
     image_cut = "right"
     dic = {}
-    print(f"number = {number}")
+    digits = ""
     if x := re.findall(r"[A-Za-z]+-?(\d+)", number):
         digits = x[0]
-        print(f"digits = {digits}")
         if len(digits) >= 5:
             if digits.startswith("00"):
                 number = number.replace(digits, digits[2:])
-            else:
-                number = number.replace("-", "")
-        elif len(digits) == 4:
-            number = number.replace("-", "0")  # DSVR-1698 -> dsvr01698 https://github.com/sqzw-x/mdcx/issues/393
-    number_00 = number.lower().replace("-", "00")  # 搜索结果多，但snis-027没结果
+    number_00 = number.lower().replace(digits, digits.zfill(5)).replace("-", "")  # 数字不足5位则在起始位补0, 搜索结果多，但snis-027没结果
     number_no_00 = number.lower().replace("-", "")  # 搜索结果少
     web_info = "\n       "
     log_info += " \n    🌐 dmm"
@@ -859,5 +854,5 @@ if __name__ == "__main__":
     # print(main('ABF-164'))
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
-    # print(main('HODV-21938'))
+    # print(main('SPRD-1139'))
     pass

@@ -360,6 +360,7 @@ if __name__ == "__main__":
     # print(main('aldn-334', ''))           # 存在系列字段
     # print(main('ssni-200', ''))           # 存在多个搜索结果
     # print(main('START-104', language='zh_tw'))      # 简介存在无效信息  "*根据分发方式,内容可能会有所不同"
-    print(main('abs-141'))  # 一个搜索结果
-    print(main('MIAB-204'))  # 多个搜索结果
-    print(main('ABF-131', ''))  # 无码破解
+    # print(main('abs-141'))  # 一个搜索结果
+    # print(main('MIAB-204'))  # 多个搜索结果
+    # print(main('ABF-131', ''))  # 无码破解
+    pass

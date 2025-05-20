@@ -243,4 +243,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 if __name__ == "__main__":
     # yapf: disable
     # print(main('dhla-009'))
-    print(main('dldss-177'))
+    # print(main('dldss-177'))
+    pass

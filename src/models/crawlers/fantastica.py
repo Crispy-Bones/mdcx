@@ -253,4 +253,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 
 if __name__ == "__main__":
     # yapf: disable
-    print(main('FAAP525'))  # 无图  # print(main('fakwm-001'))  # print(main('fakwm-064'))  # print(main('fapro-123'))
+    # print(main('FAAP525'))  # 无图  # print(main('fakwm-001'))  # print(main('fakwm-064'))  # print(main('fapro-123'))
+    pass

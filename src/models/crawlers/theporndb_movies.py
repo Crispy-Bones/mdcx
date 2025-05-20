@@ -507,4 +507,5 @@ if __name__ == "__main__":
     # print(main('', file_path='ClubSeventeen.18.10.09.Alecia.Fox.Solo.XXX.2160p.MP4-KTR[rarbg].mp4')) # 多个，按相似度命中
     # print(main('', file_path='WhiteTeensBlackCocks.17.07.09.Alecia.Fox.XXX.2160p.MP4-KTR[rarbg].mp4'))   # 缺失资源
     # print(main('', file_path='Anissa And Lola At Nursing School.mp4'))
-    print(main('', file_path='anna the detective 1080p.mp4'))
+    # print(main('', file_path='anna the detective 1080p.mp4'))
+    pass

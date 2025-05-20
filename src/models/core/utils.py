@@ -256,12 +256,10 @@ def convert_half(string, operation_flags=0b111):
         for key, value in config.special_word.items():
             # 统一处理为元组格式
             targets = value if isinstance(value, (tuple, list)) else (value,)
-            
-            # 为每个目标词生成两种可能的键（包含●和○）
+          
+            # 修改点：仅使用原始key，不再生成○版本
             for target in targets:
-                key_circle = key.replace("●", "○")  # 生成○版本
-                for k in [key, key_circle]:        # 同时注册两种形式
-                    reverse_special_word.setdefault(target, []).append(k)
+                reverse_special_word.setdefault(target, []).append(key)  # 直接添加原始key
         # 构建完整替换字典（包含正向和反向映射）
         all_replacements = {}
         # 添加正向映射

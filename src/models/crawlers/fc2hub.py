@@ -225,4 +225,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 if __name__ == "__main__":
     # yapf: disable
     # print(main('FC2-424646'))
-    print(main('1940476'))  # 无码  # print(main('1860858', ''))  #有码  # print(main('1599412', ''))  # print(main('1131214', ''))  # 未找到  # print(main('1837553', ''))  # print(main('1613618', ''))  # print(main('1837553', ''))  # print(main('1837589', ""))  # print(main('1760182', ''))  # print(main('1251689', ''))  # print(main('674239', ""))  # print(main('674239', "))  # print(main('1924003', ''))   # 无图
+    # print(main('1940476'))  # 无码  # print(main('1860858', ''))  #有码  # print(main('1599412', ''))  # print(main('1131214', ''))  # 未找到  # print(main('1837553', ''))  # print(main('1613618', ''))  # print(main('1837553', ''))  # print(main('1837589', ""))  # print(main('1760182', ''))  # print(main('1251689', ''))  # print(main('674239', ""))  # print(main('674239', "))  # print(main('1924003', ''))   # 无图
+    pass
