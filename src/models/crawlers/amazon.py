@@ -161,7 +161,7 @@ def _split_title(
                 best_match_actor,
                 min_length=3,
                 pattern=None,
-                separator=" ",
+                separator=r"\s+",
                 extra_separator=None
                 ):
     """
@@ -178,7 +178,7 @@ def _split_title(
     """
     if pattern:
         original_title = re.sub(pattern, "", original_title).strip()
-    
+    # 移除标题末尾所有的演员名, 保留标题中间的演员名;
     original_title = _remove_actor(original_title, actor_list)
     print(f"original_title = {original_title}")
     # 初始化原标题列表
@@ -204,79 +204,157 @@ def _split_title(
         for idx in range(len(no_split_title_list)):
             no_split_title_list[idx] = no_split_title_list[idx] + " " + best_match_actor
         return no_split_title_list, no_split_title_list
-        
-    # 构造分隔符的正则表达式模式
-    pattern_parts = []
-    separator_list = [separator]
-    if extra_separator:
-        separator_list.extend(extra_separator.split(","))
-    for each_sep in separator_list:
-        pattern_parts.append(re.escape(each_sep))
-    pattern = "|".join(pattern_parts)
+
+    # 整合主分隔符和额外分隔符
+    if extra_separator is None:
+        extra_separator = []
+    # 构建完整的分隔符正则表达式
+    sep_patterns = [separator] + extra_separator
+    combined_pattern = "|".join(sep_patterns)
+    # 编译正则表达式
+    sep_regex = re.compile(combined_pattern)
     
     # 如果没有匹配到分隔符，直接返回基础标题列表
-    if not re.search(pattern, original_title):
-        print(f"标题无需分割, 直接返回基础标题列表")
+    match = sep_regex.search(original_title)
+    if not match:
+        print(f"标题无需分隔, 直接返回基础标题列表")
         # 根据最短标题长度选择排列顺序, 标题过短时优先搜索添加演员的标题
         seq_flag = "actor first" if len(original_title) <= 15  else "no actor first"
         search_title_list = _add_actor_to_title(no_split_title_list, best_match_actor, seq_flag)
         return search_title_list, search_title_list
     
-    title_length = len(original_title)
-    
-    def is_valid_part(title_length, part, actor_list, length_ratio=0.2):
+    def split_and_filter(title, original_title_length, actor_list, sep, length_ratio=0.15):
         """
-        判断一个片段是否有效
-        1. 片段不能为空
-        2. 片段不能为演员名
-        3. 片段长度大于8或长度在4到8之间且不能为纯数字或字母或番号 例如: ABC-123
+        按照指定的分隔符拆分标题字符串，并根据规则过滤拆分片段
+        入参:
+            title (str): 要拆分的标题字符串
+            original_title_length (int): 原始标题的长度
+            actor_list (list): 演员列表，用于跳过包含演员名称的拆分片段
+            sep (str): 分隔符，默认为 r'\s+'（匹配连续空白字符）
+            length_ratio (float): 拆分片段的最小长度比例，默认为 0.15
+        分隔规则:
+        1. 连续多个分隔符视为一个分隔符
+        2. 对于所有的拆分片段 part, len(part) > =4
+        3. 对于所有的拆分片段 part, if part in actor_list, 则跳过此分隔字符, 检测下一个分隔
+        4. 对于所有的拆分片段 part, 如果是字母数字混合, 或者为'字母-数字'格式, 则跳过此分隔字符, 检测下一个分隔
+        5. 如果分隔符数量 >= 4, if len(part) < original_title_length * length_ratio, 则跳过此分隔, 检测下一个分隔
+        6. 检测最后一个part, 满足规则时添加到拆分标题列表, 否则合并到上一个部分
+        返回:
+            list: 拆分后的标题列表
         """
-        part = part.strip()
-        if not part:
-            return False
-        if part in actor_list:
-            return False
-        if len(part) > 8:
-            return True
-        if (
-            (len(part) >= max(math.floor(title_length * length_ratio), 4)) and
-            (not re.search(r"(^[a-zA-Z]+-\d+$)|(^[a-zA-Z0-9]+$)", part))
-            ):
-            return True
-        print(f"标题片段 {part} 无效, 跳过")
-        return False
+        # 解析分隔符 sep，提取出单一连接符
+        def get_separator_char(sep):
+            # 特殊处理常见的转义字符
+            escape_chars = {
+                r"\s": " ",  # 空白字符对应空格
+                r"\d": "0",  # 数字对应 '0'
+                r"\w": "a",  # 字母或数字对应 'a'
+            }
+            # 去掉量词（如 '+'、'*'、'?'）
+            core_sep = re.sub(r"[+*?]+$", "", sep)
+            # 如果是转义字符，返回对应的单一字符
+            if core_sep in escape_chars:
+                return escape_chars[core_sep]
+            # 如果是普通字符（如 '!'、','、'?'），直接返回第一个字符
+            if core_sep:
+                return core_sep[0]
+            # 默认返回空格
+            return " "
+        
+        # 使用正则表达式找到所有分隔符块的位置
+        sep_blocks = [(m.start(), m.end()) for m in re.finditer(sep, title)]
+        # 分隔符块数量
+        sep_count = len(sep_blocks)
+        # 结果列表
+        result = []
+        start = 0  # 当前拆分起始位置
+        
+        # 辅助函数：检查是否为字母数字混合或 '字母-数字' 格式
+        def is_alphanumeric_or_pattern(part):
+            return bool(re.match(r'^[A-Za-z0-9]+$', part)) or bool(re.match(r'^[A-Za-z]+-[0-9]+$', part))
+        
+        # 获取连接符
+        separator_char = get_separator_char(sep)
+        
+        for i, (d_start, d_end) in enumerate(sep_blocks):
+            # 拆分当前部分
+            part = title[start:d_start]
+            # 规则 1: 长度必须 >= 4
+            if len(part) < 4:
+                continue
+            # 规则 2: 如果 part 在 actor_list 中，则跳过
+            if part in actor_list:
+                continue
+            # 规则 3: 如果 part 是字母数字混合或符合 '字母-数字' 格式，则跳过
+            if is_alphanumeric_or_pattern(part):
+                continue
+            # 规则 4: 如果分隔符数量 >= 4，则检测长度
+            if sep_count >= 4 and len(part) < length_ratio * original_title_length:
+                continue
+            # 如果通过所有规则，则添加到结果列表中
+            result.append(part)
+            start = d_end  # 更新起始位置为当前分隔符块的结束位置
+        
+        # 添加最后一部分，并检查规则
+        last_part = title[start:]
+        if last_part:
+            # 规则 1: 长度必须 >= 4
+            if len(last_part) < 4:
+                pass  # 不满足规则，标记为需要合并
+            # 规则 2: 如果 last_part 在 actor_list 中，则跳过
+            elif last_part in actor_list:
+                pass  # 不满足规则，标记为需要合并
+            # 规则 3: 如果 last_part 是字母数字混合或符合 '字母-数字' 格式，则跳过
+            elif is_alphanumeric_or_pattern(last_part):
+                pass  # 不满足规则，标记为需要合并
+            # 规则 4: 如果分隔符数量 >= 4，则检测长度
+            elif sep_count >= 4 and len(last_part) < length_ratio * original_title_length:
+                pass  # 不满足规则，标记为需要合并
+            else:
+                # 如果通过所有规则，则直接添加到最后
+                result.append(last_part)
+                last_part = None  # 标记为已处理
+        
+        # 如果 last_part 未被处理（即不满足规则），合并到上一个部分
+        if last_part:
+            if not result:
+                result.append(last_part)  # 如果结果为空，直接添加
+            else:
+                # 使用解析出的连接符进行合并
+                result[-1] += separator_char + last_part.strip()
+        return result
     
-    def split_and_filter(title, sep):
-        """辅助函数：按分隔符拆分标题并过滤无效子串"""
-        if sep in title:
-            parts = title.split(sep)
-            return [part.strip() for part in parts if is_valid_part(title_length, part, actor_list)]
-        return []
+    # 原始标题长度
+    original_title_length = len(original_title)
     
     # 先以空格拆分
     split_title_with_space = []
     for title in no_split_title_list:
-        split_title_with_space.extend(split_and_filter(title, separator))
+        split_title_with_space.extend(split_and_filter(title, original_title_length, actor_list, separator))
+    
     # 再以额外分隔符拆分
     if extra_separator:
         base_titles = split_title_with_space.copy() or no_split_title_list.copy()
-        # 将分隔符列表转换为正则表达式模式，用于匹配首尾的分隔符
-        separators = [re.escape(sep) for sep in extra_separator.split(",")]
-        start_separators_pattern = re.compile(f"^({'|'.join(separators)})+")
-        end_separators_pattern = re.compile(f"({'|'.join(separators)})+$")
-        for extra in extra_separator.split(","):
+        for extra in extra_separator:
             split_title_with_extra = []
             for title in base_titles:
-                # 去掉标题开头和末尾的所有分隔符
-                stripped_title = start_separators_pattern.sub("", title)  # 去掉开头分隔符
-                stripped_title = end_separators_pattern.sub("", stripped_title)  # 去掉末尾分隔符
-                # 对去掉首尾分隔符后的标题进行分割
-                split_title_with_extra.extend(split_and_filter(stripped_title, extra))
-            # 将新分割的结果合并到已有的标题列表中
+                split_title_with_extra.extend(split_and_filter(title, original_title_length, actor_list, extra))
+            # 将新分隔的结果合并到已有的标题列表中
             split_title_with_space.extend(split_title_with_extra)
 
+    # 去除标题首尾的分隔符
+    core_characters = [sep.rstrip('+') for sep in sep_patterns]
+    pattern_str = f"({'|'.join(core_characters)})+"
+    # 创建匹配标题首尾分隔符的正则表达式
+    start_separators_pattern = re.compile(f"^{pattern_str}")
+    end_separators_pattern = re.compile(f"{pattern_str}$")
+    titles_no_actor = no_split_title_list + split_title_with_space
+    for i in range(len(titles_no_actor)):
+        titles_no_actor[i] = start_separators_pattern.sub("", titles_no_actor[i]) # 去掉开头分隔符
+        titles_no_actor[i] = end_separators_pattern.sub("", titles_no_actor[i]) # 去掉末尾分隔符
+    
     # 合并所有有效标题片段并去重
-    titles_no_actor = list(dict.fromkeys(no_split_title_list + split_title_with_space))
+    titles_no_actor = list(dict.fromkeys(titles_no_actor))
     # 获取最短标题长度
     shortest_length = len(min(titles_no_actor, key=len))
     # 根据最短标题长度选择排列顺序, 标题过短时优先搜索添加演员的标题
@@ -451,7 +529,7 @@ def _check_title_matching(
                 print(f"匹配长度 < {required_match_length}, 匹配失败!")
                 return False
 
-def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern, pattern, long_title_length=70):
+def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern, pattern):
     """
     检查详情页链接中的演员是否匹配
     """
@@ -469,7 +547,7 @@ def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern,
             print(f"标题匹配到演员: {actor}")
             return "ACTOR MATCH"
     if (
-        len(detail_compare_title) <= long_title_length and # 仅检查短标题的演员名, 长标题在详情页链接中会被截断
+        len(amazon_compare_title) <= len(detail_compare_title) and # 如果 len(amazon_compare_title) > len(detail_compare_title) 说明详情链标题被截断, 跳过匹配
         detail_compare_title[-4:] != amazon_compare_title[-4:]):
         print(f"标题演员不匹配")
         return "ACTOR MISMATCH"
@@ -485,7 +563,7 @@ def _get_detail_page_actor(res_li, max_name_length=12):
         for res in res_li:
             if res.strip():  # 检查字符串是否非空（去除前后空白字符后）
                 cleaned_res = res.replace(" ", "")  # 去除字符串中的空格
-                split_elements = re.split(r"[/,]", cleaned_res)  # 按 "/" 分割字符串
+                split_elements = re.split(r"[/,]", cleaned_res)  # 按 "/" 分隔字符串
                 # 筛选长度 <= max_name_length 的元素，作为人名, 并添加到列表中
                 raw_detail_actor_list.extend([elem for elem in split_elements if len(elem) <= max_name_length])
         detail_actor_list = _split_actor(raw_detail_actor_list) if raw_detail_actor_list else []
@@ -626,11 +704,13 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                                                         best_match_actor,
                                                         min_length=3,
                                                         pattern=pattern,
-                                                        separator=" ",
-                                                        extra_separator="!,…,。"
+                                                        separator=r"\s+",
+                                                        extra_separator=[r'!+',r'…+',r'。+']
                                                         )
-    print(f"\n==== 未拆分的标题列表 共 {len(no_split_title_list)} 个条目 ====\n{no_split_title_list}")
-    print(f"\n==== 搜索标题总列表 共 {len(search_title_list)} 个条目 ====\n{search_title_list}")
+    print(f"\n==== 未拆分的标题列表 共 {len(no_split_title_list)} 个条目 ====")
+    print("\n".join(map(str, no_split_title_list)))
+    print(f"\n==== 搜索标题总列表 共 {len(search_title_list)} 个条目 ====")
+    print("\n".join(map(str, search_title_list)))
     # 获取影片制作商和发行商
     print(f"\n获取制作商和发行商...")
     amazon_producer = []
