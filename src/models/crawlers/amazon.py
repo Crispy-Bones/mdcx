@@ -113,7 +113,8 @@ def _remove_actor(title, actor_list):
             # 确保actor不为空，并且标题以该演员名结尾
             if actor and title.endswith(actor):
                 title = title[:-len(actor)]
-                title = re.sub(r"[\W_]+$", "", title) # 删除多个演员名之间的符号
+                # 删除多个演员名之间的符号, 保留字母, 数字, 中日文与'●|○', MEYD-012
+                title = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff●○]+$", "", title)
                 removed = True  # 标记已删除演员名
                 break  # 重新检查新的标题末尾
         
@@ -121,19 +122,38 @@ def _remove_actor(title, actor_list):
         if not removed:
             break
     return title
-def _add_actor_to_title(title_list, best_match_actor):
+def _add_actor_to_title(title_list, best_match_actor, seq_flag="no actor first"):
     """
-    将最符合的演员名添加到标题末尾, 与原标题交错插入新列表中
+    将最符合的演员名添加到标题末尾，并按指定顺序交错排列。
+
+    参数:
+        title_list (list): 原始标题列表。
+        best_match_actor (str): 最匹配的演员名。
+        seq_flag (str): 控制交错排列顺序。可选值为 'actor first' 或 'no actor first'。
+                         默认为 'no actor first'。
+
+    返回:
+        list: 包含原始标题和带演员名标题的交错列表。
     """
-    if best_match_actor:
-        search_title_list = []
-        titles_with_actor = [title + " " + best_match_actor for title in title_list]
-        for title, title_with_actor in zip(title_list, titles_with_actor):
-            search_title_list.append(title)
-            search_title_list.append(title_with_actor)
-        return search_title_list
-    else:
+    # 如果演员名为空或无效，直接返回原始标题列表
+    if not best_match_actor:
         return title_list
+
+    # 根据 seq_flag 决定排列顺序
+    search_title_list = []
+    for title in title_list:
+        title_with_actor = f"{title} {best_match_actor}"
+        if seq_flag == "actor first":
+            search_title_list.append(title_with_actor)  # 带演员名的标题在前
+            search_title_list.append(title)             # 原始标题在后
+        elif seq_flag == "no actor first":
+            search_title_list.append(title)             # 原始标题在前
+            search_title_list.append(title_with_actor)  # 带演员名的标题在后
+        else:
+            raise ValueError("Invalid value for seq_flag. Must be 'actor first' or 'no actor first'.")
+
+    return search_title_list
+
 
 def _split_title(
                 original_title,
@@ -160,7 +180,7 @@ def _split_title(
         original_title = re.sub(pattern, "", original_title).strip()
     
     original_title = _remove_actor(original_title, actor_list)
-                
+    print(f"original_title = {original_title}")
     # 初始化原标题列表
     no_split_title_list = [original_title]
     
@@ -197,7 +217,9 @@ def _split_title(
     # 如果没有匹配到分隔符，直接返回基础标题列表
     if not re.search(pattern, original_title):
         print(f"标题无需分割, 直接返回基础标题列表")
-        search_title_list = _add_actor_to_title(no_split_title_list, best_match_actor)
+        # 根据最短标题长度选择排列顺序, 标题过短时优先搜索添加演员的标题
+        seq_flag = "actor first" if len(original_title) <= 15  else "no actor first"
+        search_title_list = _add_actor_to_title(no_split_title_list, best_match_actor, seq_flag)
         return search_title_list, search_title_list
     
     title_length = len(original_title)
@@ -255,10 +277,13 @@ def _split_title(
 
     # 合并所有有效标题片段并去重
     titles_no_actor = list(dict.fromkeys(no_split_title_list + split_title_with_space))
-    
+    # 获取最短标题长度
+    shortest_length = len(min(titles_no_actor, key=len))
+    # 根据最短标题长度选择排列顺序, 标题过短时优先搜索添加演员的标题
+    seq_flag = "actor first" if shortest_length <= 15  else "no actor first"
     # 选取首位最符合的演员名添加到标题末尾
-    no_split_title_list = _add_actor_to_title(no_split_title_list, best_match_actor)
-    search_title_list = _add_actor_to_title(titles_no_actor, best_match_actor)
+    no_split_title_list = _add_actor_to_title(no_split_title_list, best_match_actor, seq_flag)
+    search_title_list = _add_actor_to_title(titles_no_actor, best_match_actor, seq_flag)
     return no_split_title_list, search_title_list
 
 
@@ -474,7 +499,7 @@ def _check_detail_actor(detail_actor_list, actor_list):
                 if actor in d["name"]:
                     print(f"详情页匹配到演员: {actor}")
                     return "ACTOR MATCH"
-            if d["tag"] == "certain":
+            if d["flag"] == "certain":
                 print(f"详情页演员不匹配!")
                 return "ACTOR MISMATCH"
             else:
@@ -550,8 +575,8 @@ def _check_detail_page(json_data, title_match_ele, actor_list):
         exact_acotr_list = detail_actor_list1 + detail_actor_list3
         exact_acotr_list = list(dict.fromkeys(exact_acotr_list))
         detail_actor_list = []
-        certain_acotr_dict = {"name": "".join(exact_acotr_list), "tag": "certain"}
-        uncertain_acotr_dict = {"name": "".join(detail_actor_list2), "tag": "uncertain"}
+        certain_acotr_dict = {"name": "".join(exact_acotr_list), "flag": "certain"}
+        uncertain_acotr_dict = {"name": "".join(detail_actor_list2), "flag": "uncertain"}
         if uncertain_acotr_dict["name"]:
             detail_actor_list.append(uncertain_acotr_dict)
         if certain_acotr_dict["name"]:
@@ -604,8 +629,8 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                                                         separator=" ",
                                                         extra_separator="!,…,。"
                                                         )
-    print(f"★★★ 未拆分的标题列表 ★★★ 共 {len(no_split_title_list)} 个条目\n{no_split_title_list}")
-    print(f"\n★★★ 搜索标题总列表 ★★★ 共 {len(search_title_list)} 个条目\n{search_title_list}")
+    print(f"\n==== 未拆分的标题列表 共 {len(no_split_title_list)} 个条目 ====\n{no_split_title_list}")
+    print(f"\n==== 搜索标题总列表 共 {len(search_title_list)} 个条目 ====\n{search_title_list}")
     # 获取影片制作商和发行商
     print(f"\n获取制作商和发行商...")
     amazon_producer = []
@@ -724,7 +749,8 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                             skip_flag = True
                     if skip_flag:
                         print(f"\n合集标题, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
-                        invalid_result_count += 1
+                        # 合集不再统计无效结果数 VENX-002
+                        # invalid_result_count += 1
                         print(f"添加到过滤集合, 继续检测其他搜索结果")
                         pic_url_filtered_set.add(pic_trunc_url)
                         continue
@@ -759,7 +785,8 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                             return hd_pic_url
                         elif check_title_actor == "ACTOR MISMATCH":
                             print(f"匹配失败, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
-                            invalid_result_count += 1
+                            # 演员匹配失败不再统计无效结果数, 对于系列影片, 有时添加演员名搜索无结果, 无演员名搜索时, 如果排序靠后, 可能会提前结束搜索 VENX-002
+                            # invalid_result_count += 1
                             print(f"添加到过滤集合, 继续检测其他搜索结果")
                             pic_url_filtered_set.add(pic_trunc_url)
                         else:

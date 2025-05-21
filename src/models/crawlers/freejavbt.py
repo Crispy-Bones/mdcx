@@ -18,10 +18,10 @@ urllib3.disable_warnings()  # yapf: disable
 
 def get_title(html):
     try:
-        result = html.xpath("//title/text()")[0].split("|")
-        number = result[0]
-        title = result[1].replace(number, "").strip()
-        number = number.strip()
+        result = html.xpath("//title/text()")[0].split("|")[0]
+        parts = result.split(" ",1)
+        title = parts[1].strip()
+        number = parts[0].strip()
         title = (
             title.replace("中文字幕", "")
             .replace("無碼", "")
@@ -40,7 +40,7 @@ def get_title(html):
 
 
 def get_actor(html):
-    actor_result = html.xpath('//a[@class="actress"]/text()')
+    actor_result = html.xpath('//a[@class="actress "]/text()')
     av_man = [
         "貞松大輔",
         "鮫島",
@@ -474,4 +474,5 @@ if __name__ == "__main__":
     # print(main('DANDY-520', ''))    # 预告片默认低品质dm，改成高品质dmb
     # print(main('PPPD-653'))
     # print(main('SSNI-531'))  # print(main('ssis-330')) # 预告片  # print(main('n1403'))  # print(main('SKYHD-014'))       # 无预览图  # print(main('FC2-424646'))     # 无番号  # print(main('CWPBD-168'))  # print(main('BadMilfs.22.04.02'))  # print(main('vixen.19.12.10'))  # print(main('CEMD-133'))  # print(main('FC2-880652')) # 无番号  # print(main('PLA-018'))  # print(main('SIVR-060'))  # print(main('STCV-067'))  # print(main('ALDN-107'))  # print(main('DSVR-1205'))    # 无标题  # print(main('SIVR-100'))  # print(main('FC2-2787433'))  # print(main('MIDV-018'))  # print(main('MIDV-018', appoint_url='https://javdb.com/v/BnMY9'))  # print(main('SVSS-003'))  # print(main('SIVR-008'))  # print(main('blacked.21.07.03'))  # print(main('FC2-1262472'))  # 需要登录  # print(main('HUNTB-107'))  # 预告片返回url错误，只有https  # print(main('FC2-2392657'))                                                  # 需要登录  # print(main('GS-067'))                                                       # 两个同名番号  # print(main('MIDE-022'))  # print(main('KRAY-001'))  # print(main('ssis-243'))  # print(main('MIDE-900', 'https://javdb.com/v/MZp24?locale=en'))  # print(main('TD-011'))  # print(main('stars-011'))    # 发行商SOD star，下载封面  # print(main('stars-198'))  # 发行商SOD star，下载封面  # print(main('mium-748'))  # print(main('KMHRS-050'))    # 剧照第一张作为poster  # print(main('SIRO-4042'))  # print(main('snis-035'))  # print(main('vixen.18.07.18', ''))  # print(main('vixen.16.08.02', ''))  # print(main('SNIS-016', ''))  # print(main('bangbros18.19.09.17'))  # print(main('x-art.19.11.03'))  # print(main('abs-141'))  # print(main('HYSD-00083'))  # print(main('IESP-660'))  # print(main('GANA-1910'))  # print(main('heyzo-1031'))  # print(main('032020-001'))  # print(main('S2M-055'))  # print(main('LUXU-1217'))  # print(main('SSIS-001', ''))  # print(main('SSIS-090', ''))  # print(main('HYSD-00083', ''))  # print(main('IESP-660', ''))  # print(main('n1403', ''))  # print(main('GANA-1910', ''))  # print(main('heyzo-1031', ''))  # print(main_us('x-art.19.11.03'))  # print(main('032020-001', ''))  # print(main('S2M-055', ''))  # print(main('LUXU-1217', ''))  # print(main_us('x-art.19.11.03', ''))
+    # print(main('PRBY-089'))
     pass
