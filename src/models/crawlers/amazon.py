@@ -4,7 +4,7 @@
 从日本Amazon官网刮削高清封面
 
 简介:
-Amazon搜索时需要使用影片标题而非番号, 而同一个番号在不同平台的名称会有差异, 尤其Amazon的很多影片有自己的命名规则, 因此需要单独进行处理
+Amazon搜索时使用的是影片标题而非番号, 而同一影片在不同平台的标题会有差异, 尤其Amazon的很多影片有自己的命名规则, 因此需要单独进行处理
 
 步骤说明:
 1. 生成演员列表 - 处理入参的演员列表, 去除可能的括号, 并整合去重, 同时返回最符合的演员名;
@@ -13,14 +13,14 @@ Amazon搜索时需要使用影片标题而非番号, 而同一个番号在不同
 4. 生成匹配标题 - 处理搜索标题, 生成用于匹配的标题, 分为末尾含演员名与不含演员名两种;
 5. 进行标题匹配 - 检测获取的Amazon标题, 与搜索标题进行匹配;
 6. 进行演员匹配 - 检测Amazon标题的演员与实际演员是否一致, 一致则采用, 无法确定时继续检测;
-7. 详情页匹配 - 检测详情页的演员名与发行日期, 一致则采用, 无法确定时继续检测;
-8. 尝试采用 - 以上流程均无法确定时, 尝试采用最可能的结果;
+7. 详情页面匹配 - 检测详情页的演员名与发行日期, 一致则采用, 无法确定时继续检测;
+8. 选取可能结果 - 以上流程均无法确定时, 选取最可能的结果;
 
 附加说明:
-1. 脚本会频繁访问Amazon页面, 请求过高时会报错, 建议减少并行刮削数量;
-2. 对于存在dmm 2K横版封面的影片, 将不再获取Amazon的封面, 而直接采用dmm 对应的竖版封面, 这也能减少对Amazon的访问;
+1. 脚本会频繁访问Amazon页面, 请求过多时会报错, 建议减少并行刮削数量;
+2. 对于存在dmm 2K横版封面的影片, 将不再获取Amazon封面, 而是直接采用dmm对应的竖版封面, 这也能减少对Amazon的访问;
 3. 如果匹配到Amazon影片, 但无高清封面, 则不会使用, 也不会以此进行Google搜图;
-4. 虽然尽可能地获取最佳匹配结果, 但不保证100%匹配率与准确率, 对于常见的厂商, 在与dmm结果相结合的情况下, 匹配度可达到95%以上;
+4. 不能保证100%匹配率, 对于主流厂商, 在与dmm结果相结合的情况下, 匹配度可达95%以上;
 """
 import re
 import urllib
@@ -48,15 +48,15 @@ def _split_actor(raw_actor_list):
         # 使用正则表达式匹配括号内容
         match = re.match(r"(.+?)[（\(](.+?)[）\)]", item)
         if match:  # 如果匹配成功
-            name_before_bracket = match.group(1).strip()  # 括号前的内容
-            name_in_bracket = match.group(2).strip()      # 括号内的内容
+            name_before_bracket = match.group(1).strip().upper()  # 括号前的内容
+            name_in_bracket = match.group(2).strip().upper()    # 括号内的内容
             
             # 将拆分后的两个部分添加到集合中
             actor_list.append(name_before_bracket)
             actor_list.append(name_in_bracket)
         else:
             # 如果没有括号，直接添加到集合中
-            actor_list.append(item.strip())
+            actor_list.append(item.strip().upper())
 
     # 将集合转换为列表
     return list(dict.fromkeys(actor_list))
@@ -77,7 +77,7 @@ def _get_actor_list(json_data, title, raw_actor_list):
     print(f"原始演员列表: {raw_actor_list}")
     
     raw_actor_in_title = json_data.get("amazon_orginaltitle_actor")
-    print(f"原始标题中的演员: {raw_actor_in_title}")
+    print(f"刮削数据中的演员: {raw_actor_in_title}")
     
     
     # 调用 _split_actor 函数处理演员列表
@@ -90,7 +90,7 @@ def _get_actor_list(json_data, title, raw_actor_list):
     if combined_actor_list:
         for actor in combined_actor_list:
             # 如果标题中包含演员名, 则放置首位
-            if actor in title:
+            if actor in title.upper():
                 print(f"标题中的演员名: {actor}")
                 combined_actor_list.insert(0, actor)
                 break
@@ -180,7 +180,6 @@ def _split_title(
         original_title = re.sub(pattern, "", original_title).strip()
     # 移除标题末尾所有的演员名, 保留标题中间的演员名;
     original_title = _remove_actor(original_title, actor_list)
-    print(f"original_title = {original_title}")
     # 初始化原标题列表
     no_split_title_list = [original_title]
     
@@ -213,22 +212,22 @@ def _split_title(
     combined_pattern = "|".join(sep_patterns)
     # 编译正则表达式
     sep_regex = re.compile(combined_pattern)
-    
+    print(f"sep_regex = {sep_regex}")
     # 如果没有匹配到分隔符，直接返回基础标题列表
-    match = sep_regex.search(original_title)
+    match = sep_regex.search(no_split_title_list[0])
     if not match:
         print(f"标题无需分隔, 直接返回基础标题列表")
         # 根据最短标题长度选择排列顺序, 标题过短时优先搜索添加演员的标题
-        seq_flag = "actor first" if len(original_title) <= 15  else "no actor first"
+        seq_flag = "actor first" if len(no_split_title_list[0]) <= 15  else "no actor first"
         search_title_list = _add_actor_to_title(no_split_title_list, best_match_actor, seq_flag)
         return search_title_list, search_title_list
     
-    def split_and_filter(title, original_title_length, actor_list, sep, length_ratio=0.15):
+    def split_and_filter(title, no_split_title_length, actor_list, sep, length_ratio=0.15):
         """
         按照指定的分隔符拆分标题字符串，并根据规则过滤拆分片段
         入参:
             title (str): 要拆分的标题字符串
-            original_title_length (int): 原始标题的长度
+            no_split_title_length (int): 未拆分标题的长度
             actor_list (list): 演员列表，用于跳过包含演员名称的拆分片段
             sep (str): 分隔符，默认为 r'\s+'（匹配连续空白字符）
             length_ratio (float): 拆分片段的最小长度比例，默认为 0.15
@@ -237,7 +236,7 @@ def _split_title(
         2. 对于所有的拆分片段 part, len(part) > =4
         3. 对于所有的拆分片段 part, if part in actor_list, 则跳过此分隔字符, 检测下一个分隔
         4. 对于所有的拆分片段 part, 如果是字母数字混合, 或者为'字母-数字'格式, 则跳过此分隔字符, 检测下一个分隔
-        5. 如果分隔符数量 >= 4, if len(part) < original_title_length * length_ratio, 则跳过此分隔, 检测下一个分隔
+        5. 如果分隔符数量 >= 4, if len(part) < no_split_title_length * length_ratio, 则跳过此分隔, 检测下一个分隔
         6. 检测最后一个part, 满足规则时添加到拆分标题列表, 否则合并到上一个部分
         返回:
             list: 拆分后的标题列表
@@ -289,7 +288,7 @@ def _split_title(
             if is_alphanumeric_or_pattern(part):
                 continue
             # 规则 4: 如果分隔符数量 >= 4，则检测长度
-            if sep_count >= 4 and len(part) < length_ratio * original_title_length:
+            if sep_count >= 4 and len(part) < length_ratio * no_split_title_length:
                 continue
             # 如果通过所有规则，则添加到结果列表中
             result.append(part)
@@ -308,7 +307,7 @@ def _split_title(
             elif is_alphanumeric_or_pattern(last_part):
                 pass  # 不满足规则，标记为需要合并
             # 规则 4: 如果分隔符数量 >= 4，则检测长度
-            elif sep_count >= 4 and len(last_part) < length_ratio * original_title_length:
+            elif sep_count >= 4 and len(last_part) < length_ratio * no_split_title_length:
                 pass  # 不满足规则，标记为需要合并
             else:
                 # 如果通过所有规则，则直接添加到最后
@@ -325,12 +324,12 @@ def _split_title(
         return result
     
     # 原始标题长度
-    original_title_length = len(original_title)
+    no_split_title_length = len(no_split_title_list[0])
     
     # 先以空格拆分
     split_title_with_space = []
     for title in no_split_title_list:
-        split_title_with_space.extend(split_and_filter(title, original_title_length, actor_list, separator))
+        split_title_with_space.extend(split_and_filter(title, no_split_title_length, actor_list, separator))
     
     # 再以额外分隔符拆分
     if extra_separator:
@@ -338,7 +337,7 @@ def _split_title(
         for extra in extra_separator:
             split_title_with_extra = []
             for title in base_titles:
-                split_title_with_extra.extend(split_and_filter(title, original_title_length, actor_list, extra))
+                split_title_with_extra.extend(split_and_filter(title, no_split_title_length, actor_list, extra))
             # 将新分隔的结果合并到已有的标题列表中
             split_title_with_space.extend(split_title_with_extra)
 
@@ -429,7 +428,7 @@ def _check_title_matching(
                 2). 如果 len_no_split > long_title_length
                     要求 min(len_no_split, len_amazon)/max(len_no_split, len_amazon) >= length_ratio
                     要求匹配长度 >= math.floor(min(len_no_split, len_amazon) * golden_ratio)
-                    这是专门针对超长标题且搜索结果雷同的系列影片 (HUNTA-145)
+                    这是专门针对超长标题且搜索结果类同的系列影片 (HUNTA-145)
             d. 再将Amazon标题与拆分标题匹配匹配, 匹配位置必须是拆分标题首字符
             e. 拆分标题长度<= match.ceil(1.5 * min_match_length), 要求短标题完全匹配长标题
             f. 拆分标题长度> match.ceil(1.5 * min_match_length), 要求匹配长度 >= min(math.ceil(len(拆分标题长度) * split_match_ratio), len(短标题))
@@ -546,11 +545,12 @@ def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern,
         if actor in detail_compare_title:
             print(f"标题匹配到演员: {actor}")
             return "ACTOR MATCH"
-    if (
-        len(amazon_compare_title) <= len(detail_compare_title) and # 如果 len(amazon_compare_title) > len(detail_compare_title) 说明详情链标题被截断, 跳过匹配
-        detail_compare_title[-4:] != amazon_compare_title[-4:]):
-        print(f"标题演员不匹配")
-        return "ACTOR MISMATCH"
+    # if (
+    #     len(amazon_compare_title) <= len(detail_compare_title) and # 如果 len(amazon_compare_title) > len(detail_compare_title) 说明详情链标题被截断, 跳过匹配
+    #     detail_compare_title[-4:] != amazon_compare_title[-4:]):
+    #     print(f"标题演员不匹配")
+    #     return "ACTOR MISMATCH"
+    # 详情链标题格式不统一, 不再判断演员不匹配的情况
     else:
         print(f"未找到演员或含有其他演员, 跳过")
         return "ACTOR UNCERTAIN"
@@ -695,7 +695,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
     print(f"\n/--------------------------------Amazon搜图开始--------------------------------/")
     actor_list, best_match_actor = _get_actor_list(json_data, original_title, raw_actor_list)
     # 移除标题中匹配的pattern
-    pattern = r"^\[.*?\]|^【.*?】|\(.*?\)|DVD|オンラインコード版|（DOD）|（BOD）"
+    pattern = r"^\[.*?\]|^【.*?】|DVD|オンラインコード版|（DOD）|（BOD）"
     # 拆分标题
     print(f"\n开始生成搜索标题列表...")
     no_split_title_list, search_title_list = _split_title(
@@ -705,7 +705,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                                                         min_length=3,
                                                         pattern=pattern,
                                                         separator=r"\s+",
-                                                        extra_separator=[r'!+',r'…+',r'。+']
+                                                        extra_separator=[r"!+",r"…+",r"。+",r"~+"]
                                                         )
     print(f"\n==== 未拆分的标题列表 共 {len(no_split_title_list)} 个条目 ====")
     print("\n".join(map(str, no_split_title_list)))
@@ -863,7 +863,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                             execution_time = end_time - start_time
                             print(f"Elapsed time: {execution_time:.2f}s\n")
                             return hd_pic_url
-                        elif check_title_actor == "ACTOR MISMATCH":
+                        elif check_title_actor == "ACTOR MISMATCH": # 不再判断演员不匹配
                             print(f"匹配失败, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
                             # 演员匹配失败不再统计无效结果数, 对于系列影片, 有时添加演员名搜索无结果, 无演员名搜索时, 如果排序靠后, 可能会提前结束搜索 VENX-002
                             # invalid_result_count += 1
@@ -896,7 +896,8 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         print(f"Elapsed time: {execution_time:.2f}s\n")
                         return each[0]
                     elif detail_page_match == "LACK PROOF":
-                        print(f"详情页未找到有效信息, 将图片url添加到保留列表")
+                        print(f"详情页未找到有效信息, 将图片url添加到过滤列表和保留列表")
+                        pic_url_filtered_set.add(each[0])
                         pic_legacy_list.append(each[0])
                     else:
                         print(f"详情页检测未通过, 将图片url添加到过滤集合, 继续检测其他搜索结果")
@@ -904,7 +905,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
 
     if pic_legacy_list:
         pic_legacy_list = list(dict.fromkeys(pic_legacy_list))
-        print(f"已经尝试所有可能搜索, 仍未找到确实匹配结果, 选取可能的结果")
+        print(f"已经尝试所有搜索, 仍未找到确切匹配结果, 选取可能的结果")
         print(f"图片保留列表\npic_legacy_list = {pic_legacy_list}")
         print(f"选取结果\npic_legacy_list[0] = {pic_legacy_list[0]}")
         print(f"/--------------------------------Amazon搜图结束--------------------------------/\n")
