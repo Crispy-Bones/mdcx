@@ -562,10 +562,10 @@ def _get_detail_page_actor(res_li, max_name_length=12):
         raw_detail_actor_list = []
         for res in res_li:
             if res.strip():  # 检查字符串是否非空（去除前后空白字符后）
-                cleaned_res = res.replace(" ", "")  # 去除字符串中的空格
-                split_elements = re.split(r"[/,]", cleaned_res)  # 按 "/" 分隔字符串
+                split_elements = re.split(r"[/,]", res)  # 按 "/" 分隔字符串
+                cleaned_elements = [re.sub(r"[\W_]+", "", ele) for ele in split_elements] # 删除非字母数字字符
                 # 筛选长度 <= max_name_length 的元素，作为人名, 并添加到列表中
-                raw_detail_actor_list.extend([elem for elem in split_elements if len(elem) <= max_name_length])
+                raw_detail_actor_list.extend([ele for ele in cleaned_elements if ele and len(ele) <= max_name_length])
         detail_actor_list = _split_actor(raw_detail_actor_list) if raw_detail_actor_list else []
     return detail_actor_list
 
