@@ -250,11 +250,11 @@ def _get_big_thumb(json_data):
 
     if json_data["cover_from"] == 'dmm':
         if json_data["cover"]:
-            thumb_width, h = get_imgsize(json_data["cover"])
-            print(f"dmm thumb_width = {thumb_width}")
-            # 对于存在 dmm 2K 横版封面的影片, 直接下载其竖版封面
-            if thumb_width >= 1700:
-                json_data["logs"] += "\n 🖼 HD Thumb found! ({})({}s)".format(
+            thumb_width, thumb_height = get_imgsize(json_data["cover"])
+            print(f"dmm thumb_width = {thumb_width}\ndmm thumb_height = {thumb_height}")
+            # 对于存在 dmm 高清横版封面的影片, 尝试直接下载其竖版封面
+            if (thumb_width >= 1700) and (thumb_width >  thumb_height):
+                json_data["logs"] += "\n 🖼 HD Dmm Thumb found! ({})({}s)".format(
                     json_data["cover_from"], get_used_time(start_time)
                 )
                 json_data["poster_big"] = True
@@ -352,7 +352,17 @@ def _get_big_poster(json_data):
         return json_data
 
     # 如果有大图时，直接下载
-    if json_data.get("poster_big") and get_imgsize(json_data["poster"])[1] > 600:
+    """
+    1. 有时 dmm thumb 是高清, 但是 poster 分辨率较低, 同时 Amazon 有高清封面 (SONE-425), 如果 Amazon 无高清封面, 则会截取 thumb
+        潜在bug: 可能会出现 Amazon 无高清封面,并且 dmm thumb 为非传统DVD图片格式的情况, 这会导致截取 thumb 生成的图片非标准 poster. 目前还未发现此情况)
+    2. 有时 faleno 与 dahlia 没有高清封面
+    因此需要增加 poster width > 800 的条件
+    """
+    if (
+        json_data.get("poster_big") and
+
+        get_imgsize(json_data["poster"])[0] > 800
+        ):
         json_data["image_download"] = True
         json_data["logs"] += f"\n 🖼 HD Poster found! ({json_data['poster_from']})({get_used_time(start_time)}s)"
         return json_data

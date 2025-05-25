@@ -151,8 +151,10 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
             title = title.replace(" " + each, "")
         cover_url = get_cover(html_detail)  # 获取cover
         poster_url = (
-            cover_url.replace("_web_h4", "_h1").replace("_1200.jpg", "_2125.jpg").replace("_tsp.jpg", "_actor.jpg")
+            cover_url.replace("_web_h4", "_h1").replace("_1200.jpg", "_2125.jpg").replace("_tsp.jpg", "_actor.jpg") 
         )
+        if not poster_url.endswith(("_2125.jpg", "_tsp.jpg")): # 防止刮削到横版poster (DLDSS-168)
+            poster_url = poster_url.replace(".jpg", "_2125.jpg")
         outline = get_outline(html_detail)
         tag = ""
         release = get_release(html_detail)
@@ -243,5 +245,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 if __name__ == "__main__":
     # yapf: disable
     # print(main('dhla-009'))
-    # print(main('dldss-177'))
+    # print(main('DLDSS-168'))
     pass
