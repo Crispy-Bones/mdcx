@@ -390,6 +390,9 @@ def _get_compare_title(pro_pattern, title, actor_list, pattern=None, operation_f
     if pattern:
         title = re.sub(pattern, "", title).strip()
     
+    # 去除括号中的内容, 一般是商品附加信息 常见于开头是 【メーカー特典あり】 或【Amazon.co.jp限定】的标题
+    title = re.sub("[(（][^)）]*[)）]", "", title).strip()
+    
     # 调用convert_half处理标题
     compare_title_list = convert_half(title, operation_flags)
     
@@ -449,7 +452,7 @@ def _check_title_matching(
         4. 去除敏感词
     匹配条件(按优先级排列):
         未拆分标题匹配, compare_title == no_split_compare_title
-            a. len(长标题)/len(短标题) <= length_diff_ratio, 避免过短标题匹配到过长标题 (JUX-925)
+            a. len_amazon/len_compare <= length_diff_ratio, 避免过短未拆分标题匹配到过长Amazon标题 (JUX-925)
             b. 匹配位置必须是Amazon的标题首字符 (ATID-586)
             c. 未拆分标题长度<=min_match_length, 要求短标题完全匹配长标题 (JUX-925)
             d. 未拆分标题长度>min_match_length 且 <=mid_title_length , 要求匹配长度>= min(min_match_length, len(短标题)) (ATID-586)
@@ -481,10 +484,15 @@ def _check_title_matching(
     if compare_title == no_split_compare_title:
         print(f"标题未拆分, 遵循既定规则匹配\n未拆分标题: {compare_title}\nAmazon标题: {amazon_compare_title}")
         # 长字符串长度不能超过短字符串长度的5倍
-        if len_long > length_diff_ratio * len_short:
-            print(f"标题长度差异过大, 匹配失败!")
+        # if len_long > length_diff_ratio * len_short:
+        #     print(f"标题长度差异过大, 匹配失败!")
+        #     return False
+        
+        # 改为 Amazon标题长度不能超过未拆分标题长度的 {length_diff_ratio} 倍
+        if len_amazon > len_compare * length_diff_ratio:
+            print(f"Amazon标题过长, 未拆分标题过短, 匹配失败!")
             return False
-
+        
         if len_compare <= min_match_length:
             if short_title in long_title and amazon_compare_title.startswith(short_title):
                 print(f"短标题完全匹配长标题, 匹配成功!")
@@ -799,14 +807,40 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
 
         if result and html_search:
             html = etree.fromstring(html_search, etree.HTMLParser())
-            # 只有搜索页面显示 "{n}件の結果" 时, 才认为有搜索结果, 否则无论推荐商品中是否包含正确结果均舍弃
+            check_count = 0
             result_summary = html.xpath('//h2[@class="a-size-base a-spacing-small a-spacing-top-small a-text-normal"]/span/text()')
-            # 页面显示 "没有找到与搜索匹配的商品。", 有时下方的推荐商品中会有正确的结果, 但不能保证百分百出现, 可能和cookie有关, 暂时未找到原因, 因此直接跳过
             if not result_summary:
-                print(f"/*************无搜索结果, 结束本次搜索****************/\n")
-                continue
-            result_count = int(re.findall(r"\d+", result_summary[0])[0])
-            print(f"找到 {result_count} 个结果")
+                # 搜索未拆分标题时, 无搜索结果的情况下增加对提示结果的检测 (MVSD-450)
+                prompt_list = html.xpath('//h1[@class="a-size-medium a-color-base a-text-normal"]/span/text()')
+                prompt_message = prompt_list[0] if prompt_list else ""
+                print(f"prompt_message = {prompt_message}")
+                if (
+                    (prompt_message == "キーワードを絞るか、以下をお試しください。") and
+                    (search_title in no_split_title_list)
+                    ):
+                    print(f"未拆分标题搜索无结果, 但存在提示结果, 加入检测列表")
+                    amazon_result = html.xpath('//div[@data-index="2"]//div[@class="a-section a-spacing-base"]')
+                    check_count = len(amazon_result)
+                else:
+                    print(f"/*************无搜索结果, 结束本次搜索****************/\n")
+                    continue
+            else:
+                result_count = int(re.findall(r"\d+", result_summary[0])[0])
+                check_count = result_count
+                print(f"找到 {result_count} 个搜索结果")
+                # 增加对推荐结果的检测
+                recommend_result = html.xpath('//div[@class="a-section a-spacing-base a-spacing-top-base"]/span/text()')
+                if "All Departments" in recommend_result:
+                    recommend_summary = html.xpath('//div[@class="a-section a-spacing-base a-spacing-top-base"]/a/text()')
+                    recommend_count = int(re.findall(r"\d+", recommend_summary[0])[0])
+                    print(f"找到 {recommend_count} 个推荐结果")
+                    if recommend_count <= 4:
+                        print(f"将推荐结果加入检测列表")
+                        check_count += recommend_count
+                    else:
+                        print(f"推荐结果数量过多, 跳过")
+                amazon_result = html.xpath('//div[@class="a-section a-spacing-base"]')
+                    
             # 标题匹配成功的列表
             title_match_list = []
             # 计算无效标题的数量, 避免在无效关键词上浪费过多时间
@@ -814,7 +848,8 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
             amazon_result = html.xpath('//div[@class="a-section a-spacing-base"]')
             
             # 开始处理搜索结果
-            for each_result in amazon_result[:result_count]:
+            print(f"将检测 {check_count} 个结果")
+            for each_result in amazon_result[:check_count]:
                 if invalid_result_count == 6:
                     print(f"/**********无效结果数量过多, 结束本次搜索*************/\n")
                     break
