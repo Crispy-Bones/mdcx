@@ -151,6 +151,7 @@ def remove_content(input_string):
     keywords = [
         r"---+",
         "【※", 
+        "【エスワン20周年",
         "『制作·著作",
         "＃班長P",
         "初回無料",

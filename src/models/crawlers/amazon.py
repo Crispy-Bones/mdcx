@@ -805,7 +805,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
             if not result_summary:
                 print(f"/*************无搜索结果, 结束本次搜索****************/\n")
                 continue
-            result_count = int(result_summary[0].replace("件の結果", ""))
+            result_count = int(re.findall(r"\d+", result_summary[0])[0])
             print(f"找到 {result_count} 个结果")
             # 标题匹配成功的列表
             title_match_list = []
