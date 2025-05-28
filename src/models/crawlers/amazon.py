@@ -576,7 +576,7 @@ def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern,
     """
     print(f"\n开始匹配标题中的演员...")
     if not actor_list:
-        print(f"没有可匹配的演员, 跳过")
+        print(f"没有可匹配的演员, 跳过此检测")
         return "NO ACTOR"
     detail_title = re.findall(r".*/(.*)/dp/",detail_url)[0]
     print(f"详情链接中的标题: {detail_title}")
@@ -594,7 +594,7 @@ def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern,
     #     return "ACTOR MISMATCH"
     # 详情链标题格式不统一, 不再判断演员不匹配的情况
     else:
-        print(f"未找到演员或含有其他演员, 跳过")
+        print(f"未找到演员或含有其他演员, 跳过此检测")
         return "ACTOR UNCERTAIN"
 
 def _get_detail_page_actor(res_li, max_name_length=12):
@@ -623,10 +623,10 @@ def _check_detail_actor(detail_actor_list, actor_list):
                 print(f"详情页演员不匹配!")
                 return "ACTOR MISMATCH"
             else:
-                print(f"购买信息中未匹配到演员, 跳过")
+                print(f"购买信息中未匹配到演员, 跳过此检测")
                 return "ACTOR UNCERTAIN"
     else:
-        print(f"详情页或刮削数据缺少演员信息, 跳过")
+        print(f"详情页或刮削数据缺少演员信息, 跳过此检测")
         return "NO ACTOR"
 
 def _check_detail_release(json_data, amazon_title, promotion_keywords=[], amazon_release=None):
@@ -726,7 +726,7 @@ def _check_detail_page(json_data, title_match_ele, actor_list):
         elif check_detail_release == "RELEASE MATCH":
             return check_detail_release
         
-    print(f"详情页获取失败, 跳过")
+    print(f"详情页信息获取失败!")
     return "GET DETAIL FAILED"
 
 def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
@@ -813,14 +813,13 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                 # 搜索未拆分标题时, 无搜索结果的情况下增加对提示结果的检测 (MVSD-450)
                 prompt_list = html.xpath('//h1[@class="a-size-medium a-color-base a-text-normal"]/span/text()')
                 prompt_message = prompt_list[0] if prompt_list else ""
-                print(f"prompt_message = {prompt_message}")
                 if (
                     (prompt_message == "キーワードを絞るか、以下をお試しください。") and
                     (search_title in no_split_title_list)
                     ):
-                    print(f"未拆分标题搜索无结果, 但存在提示结果, 加入检测列表")
                     amazon_result = html.xpath('//div[@data-index="2"]//div[@class="a-section a-spacing-base"]')
                     check_count = len(amazon_result)
+                    print(f"未拆分标题搜索无结果, 但存在 {check_count} 个提示结果, 加入检测列表")
                 else:
                     print(f"/*************无搜索结果, 结束本次搜索****************/\n")
                     continue
@@ -838,7 +837,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         print(f"将推荐结果加入检测列表")
                         check_count += recommend_count
                     else:
-                        print(f"推荐结果数量过多, 跳过")
+                        print(f"推荐结果数量过多, 跳过此检测")
                 amazon_result = html.xpath('//div[@class="a-section a-spacing-base"]')
                     
             # 标题匹配成功的列表
@@ -848,7 +847,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
             amazon_result = html.xpath('//div[@class="a-section a-spacing-base"]')
             
             # 开始处理搜索结果
-            print(f"将检测 {check_count} 个结果")
+            print(f"计划检测结果总数: {check_count}")
             for each_result in amazon_result[:check_count]:
                 if invalid_result_count == 6:
                     print(f"/**********无效结果数量过多, 结束本次搜索*************/\n")
@@ -862,7 +861,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                 pic_url_list = each_result.xpath('div//div[@class="a-section aok-relative s-image-square-aspect"]/img/@src')
                 detail_url_list = each_result.xpath('div//a[@class="a-link-normal s-no-outline"]/@href')
                 
-                if len(amazon_category_list) and len(pic_url_list) and (len(amazon_title_list) and len(detail_url_list)):
+                if len(amazon_category_list) and len(pic_url_list) and len(amazon_title_list) and len(detail_url_list):
                     amazon_category = amazon_category_list[0]  # Amazon商品类型
                     amazon_title = amazon_title_list[0]  # Amazon商品标题
                     pic_url = pic_url_list[0]  # Amazon图片链接
@@ -935,7 +934,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         # 判断演员是否匹配
                         check_title_actor = _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern, pattern)
                         if check_title_actor == "ACTOR MATCH":
-                            print(f"匹配成功, 采用此结果!\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
+                            print(f"演员匹配成功, 采用此结果!\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
                             hd_pic_url = pic_trunc_url
                             print(f"/--------------------------------Amazon搜图结束--------------------------------/")
                             end_time = time.time()
@@ -943,7 +942,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                             print(f"Elapsed time: {execution_time:.2f}s\n")
                             return hd_pic_url
                         elif check_title_actor == "ACTOR MISMATCH": # 不再判断演员不匹配
-                            print(f"匹配失败, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
+                            print(f"演员匹配失败, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
                             # 演员匹配失败不再统计无效结果数, 对于系列影片, 有时添加演员名搜索无结果, 无演员名搜索时, 如果排序靠后, 可能会提前结束搜索 VENX-002
                             # invalid_result_count += 1
                             print(f"添加到过滤集合, 继续检测其他搜索结果")

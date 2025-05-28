@@ -19,6 +19,7 @@ from models.config.config import config
 from models.config.resources import resources
 from models.signals import signal
 from itertools import product
+from collections import defaultdict
 
 def replace_word(json_data):
     # 常见字段替换的字符
@@ -219,123 +220,180 @@ def convert_half(string, operation_flags=0b111):
         list: 处理后的字符串列表，元素为所有可能的转换结果
     """
     
+def convert_half(string, operation_flags=0b111):
+    """
+    多阶段文本处理函数，支持敏感词替换、字符格式转换和清理
+    
+    主要功能：
+    1. 敏感词替换：根据配置替换包含屏蔽符号(●/○)的词汇，支持双向映射
+    2. 全角转半角：转换配置指定的全角字符为半角
+    3. 格式清理：移除非单词字符并转为大写
+    
+    参数：
+    string (str): 待处理的原始字符串
+    operation_flags (int): 位标志控制处理流程
+        - 0b001 (1): 执行敏感词替换
+        - 0b010 (2): 执行全角转半角
+        - 0b100 (4): 执行格式清理和大写转换
+    
+    返回：
+    list: 处理后的字符串列表，按未屏蔽版本优先排序，保持唯一性
+    """
+    
     def generate_normalized_mapping(special_word):
         """
-        生成标准化映射关系，处理包含模糊字符（●/○）的敏感词
-        
-        参数:
-            special_word (dict): 原始敏感词映射表
-            
-        返回:
-            dict: 处理后的映射字典，格式为：
-                {
-                    "原始词": ["替换目标1", "替换目标2"],
-                    "替换目标1": ["标准化结果"],
-                    ...
-                }
+        生成标准化映射字典，用于全处理模式下的字符替换
+        处理规则：将包含●/○的键映射到去掉对应位置字符的值
+        示例："強●" => ("強制","強姦") 会生成映射："強●"->"強", "強制"->"強", "強姦"->"強"
         """
-        normalized = {}
+        normalized = defaultdict(set)
         for key, values in special_word.items():
             for v in values:
-                # 处理包含模糊字符的键
+                # 仅处理包含屏蔽符号的键
                 if "●" in key or "○" in key:
-                    # 确定模糊字符位置
-                    index = key.index("●") if "●" in key else key.index("○")
-                    # 生成标准化结果（删除模糊字符对应位置的字符）
+                    # 计算屏蔽符号位置
+                    symbol = "●" if "●" in key else "○"
+                    index = key.index(symbol)
+                    # 生成标准化结果（去掉对应位置字符）
                     normalized_target = v[:index] + v[index+1:] if index < len(v) else v
-                    # 建立双向映射关系
-                    normalized.setdefault(key, set()).add(normalized_target)
-                    normalized.setdefault(v, set()).add(normalized_target)
-        return {k: list(v) for k, v in normalized.items()} if normalized else {}
-    # 初始结果集（使用集合避免重复）
+                    # 建立双向映射
+                    normalized[key].add(normalized_target)
+                    normalized[v].add(normalized_target)
+        return {k: list(v) for k, v in normalized.items()}
+
+    # 初始化结果集合，保留原始字符串
     results = {string}
-    # 阶段1：敏感词替换处理（当操作标志包含0b001时执行）
+
+    # ========================
+    # 阶段1：敏感词替换处理
+    # ========================
     if operation_flags & 0b001:
-        # 构建反向映射字典（目标词 -> 可能的替换词列表）
-        reverse_special_word = {}
-        for key, value in config.special_word.items():
-            # 统一处理为元组格式
-            targets = value if isinstance(value, (tuple, list)) else (value,)
-          
-            # 修改点：仅使用原始key，不再生成○版本
+        # 构建反向映射字典（标准词 -> 所有可能的屏蔽形式）
+        reverse_special_word = defaultdict(list)
+        for key, values in config.special_word.items():
+            targets = values if isinstance(values, (tuple, list)) else [values]
             for target in targets:
-                reverse_special_word.setdefault(target, []).append(key)  # 直接添加原始key
-        # 构建完整替换字典（包含正向和反向映射）
-        all_replacements = {}
+                reverse_special_word[target].append(key)
+
+        # 合并正向和反向映射，构建完整替换字典
+        all_replacements = defaultdict(tuple)
         # 添加正向映射
-        for key, value in config.special_word.items():
-            targets = value if isinstance(value, (tuple, list)) else (value,)
-            all_replacements[key] = targets
-        
-        # 合并反向映射到替换字典
-        for key, targets in reverse_special_word.items():
-            existing = set(all_replacements.get(key, ()))
-            existing.update(targets)
-            all_replacements[key] = tuple(existing)
-        # 根据操作模式选择映射策略
+        for key, values in config.special_word.items():
+            targets = values if isinstance(values, (tuple, list)) else [values]
+            all_replacements[key] = tuple(targets)
+        # 合并反向映射
+        for key, sources in reverse_special_word.items():
+            existing = list(all_replacements.get(key, ()))
+            existing.extend(sources)
+            all_replacements[key] = tuple(set(existing))  # 去重
+
+        # 根据处理模式选择映射表
         replacements = (
-            generate_normalized_mapping(all_replacements)  # 全处理模式需要标准化
-            if operation_flags == 0b111 
-            else {k: list(v) for k, v in all_replacements.items()}  # 普通模式直接使用
+            generate_normalized_mapping(all_replacements) 
+            if (operation_flags & 0b100)  # 全处理模式需要标准化映射
+            else {k: list(v) for k, v in all_replacements.items()}
         )
-        # 预处理输入字符串：统一模糊字符为●
+
+        # 预处理：统一○为●以便匹配
         processed_str = string.replace("○", "●")
-        
-        # 构建正则表达式模式（按长度降序排列，确保最长匹配优先）
+        # 按长度降序排序模式，确保长模式优先匹配
         sorted_patterns = sorted(replacements.keys(), key=lambda x: (-len(x), x))
         pattern = re.compile("|".join(map(re.escape, sorted_patterns)))
-        matches = list(pattern.finditer(processed_str))
-        # 处理匹配结果
-        results = set()
+        matches = pattern.finditer(processed_str)
+
         if matches:
-            # 判断是否处于全处理模式（需要过滤模糊字符）
-            filter_special = (operation_flags == 0b111)
-            replacement_options = []
-            
-            # 收集每个匹配点的替换选项
+            # 将匹配项按原始模式分组（相同模式的不同匹配归为一组）
+            pattern_groups = defaultdict(list)
             for m in matches:
-                key = m.group()
-                candidates = replacements.get(key, [])
-                # 全处理模式需要过滤带模糊字符的选项
-                filtered = [repl for repl in candidates 
-                            if not filter_special or ("●" not in repl and "○" not in repl)]
-                replacement_options.append(filtered)
-            
-            # 生成所有可能的替换组合
-            for combo in product(*replacement_options):
-                temp_str = string  # 使用原始字符串保留○符号
-                # 反向处理匹配项（避免替换位置偏移）
-                for m, repl in zip(reversed(matches), reversed(combo)):
-                    start, end = m.span()
+                matched_pattern = m.group()
+                pattern_groups[matched_pattern].append(m)
+
+            # 初始化替换选项字典
+            filter_special = (operation_flags == 0b111)  # 全处理模式需要过滤屏蔽符号
+            replacement_options = {}
+            patterns = list(pattern_groups.keys())  # 获取唯一模式列表
+
+            # 判断是否需要添加原词选项（混合存在屏蔽词和未屏蔽词时才需要）
+            has_shielded = any(p in config.special_word for p in patterns)
+            has_unshielded = any(p not in config.special_word for p in patterns)
+            need_extra = has_shielded and has_unshielded and (operation_flags != 0b111)
+
+            # 为每个模式生成替换选项
+            for pattern in patterns:
+                candidates = replacements.get(pattern, [])
+                # 根据处理模式过滤候选词
+                filtered = [
+                    repl for repl in candidates
+                    if not filter_special or ("●" not in repl and "○" not in repl)
+                ]
+                
+                # 添加原词选项的条件处理（非全处理模式且当前模式无屏蔽符号）
+                if need_extra and ("●" not in pattern and "○" not in pattern):
+                    if pattern not in filtered:
+                        filtered.append(pattern)
+                
+                replacement_options[pattern] = filtered
+
+            # 生成所有可能的替换组合（笛卡尔积）
+            results = set()
+            for combo in product(*[replacement_options[p] for p in patterns]):
+                temp_str = string  # 使用原始字符串以保留○符号
+                replace_actions = []
+                
+                # 收集所有替换操作
+                for pattern_idx, chosen_repl in enumerate(combo):
+                    current_pattern = patterns[pattern_idx]
+                    for m in pattern_groups[current_pattern]:
+                        # 记录替换位置和内容
+                        replace_actions.append( (m.start(), m.end(), chosen_repl) )
+                
+                # 按倒序执行替换，避免位置偏移
+                replace_actions.sort(reverse=True, key=lambda x: x[0])
+                for start, end, repl in replace_actions:
                     temp_str = temp_str[:start] + repl + temp_str[end:]
+                
                 results.add(temp_str)
+
+            # 结果排序：未屏蔽版本优先
+            results = sorted(
+                list(results),
+                key=lambda s: any(c in s for c in ('●', '○'))  # 包含屏蔽符号的排在后面
+            )
         else:
-            results.add(string)  # 无匹配时保留原字符串
-        
-        # 转换为列表形式
-        results = list(results)
-    # 初始化转换列表
-    if isinstance(results, set):  # 如果 results 是集合，转换为列表
-        conver_list = list(results)
-    elif isinstance(results, list):  # 如果 results 已经是列表，直接使用
-        conver_list = results
-    else:  # 其他情况（如单个字符串），将其包装为列表
-        conver_list = [results]
-    # 阶段2：全角转半角处理（当操作标志包含0b010时执行）
+            results = [string]  # 无匹配时返回原始字符串
+
+    # ========================
+    # 阶段2：全角转半角处理
+    # ========================
+    conver_list = list(results)
     if operation_flags & 0b010:
-        # 使用循环逐一替换多字符映射
-        for i, s in enumerate(conver_list):
+        for i in range(len(conver_list)):
+            s = conver_list[i]
             for full, half in config.full_half_char:
                 s = s.replace(full, half)
-            conver_list[i] = s  # 更新转换列表
-    # 阶段3：格式清理和大写转换（当操作标志包含0b100时执行）
+            conver_list[i] = s
+
+    # ========================
+    # 阶段3：格式清理和大写转换
+    # ========================
     if operation_flags & 0b100:
         conver_list = [
-            # 移除非单词字符（保留字母数字）并转为大写
+            # 移除非单词字符（保留字母、数字、汉字）并转为大写
             re.sub(r"[\W_]+", "", s).upper()
             for s in conver_list
         ]
-    return conver_list
+
+    # ========================
+    # 最终处理：去重并保持顺序
+    # ========================
+    seen = set()
+    final_results = []
+    for s in conver_list:
+        if s and (s not in seen):  # 过滤空字符串并去重
+            seen.add(s)
+            final_results.append(s)
+    
+    return final_results
 
 
 def get_new_release(release):
