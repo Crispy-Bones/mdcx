@@ -508,6 +508,7 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
     req_web += "-> %s" % website_name
     cookies = {"cookie": "uid=abcd786561031111; age_check_done=1;"}
     css_selector = "div[class='flex py-1.5 pl-3'] > a"
+    price_selector = "span.font-bold.text-lg"
     real_url = appoint_url
     title = ""
     cover_url = ""
@@ -542,7 +543,7 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
         # tv.dmm未屏蔽非日本ip，此处请求页面，看是否可以访问
         if "tv.dmm." not in real_url:
             cookies_playwright = convert_cookies_to_playwright_format(cookies, ".dmm.co.jp")
-            page_url, url_list = get_urls_with_playwright(real_url, css_selector, cookies=cookies_playwright)
+            page_url, url_list = get_urls_with_playwright(real_url, css_selector, price_selector, cookies=cookies_playwright)
             # print(f"page_url: {page_url}, url_list: {url_list}")
             if not page_url:  # 请求失败
                 debug_info = "网络请求错误: %s " % real_url
@@ -574,7 +575,7 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
                         debug_info = "再次搜索地址: %s " % real_url
                         log_info += web_info + debug_info
                         cookies_playwright = convert_cookies_to_playwright_format(cookies, ".dmm.co.jp")
-                        page_url, url_list = get_urls_with_playwright(real_url, css_selector, cookies=cookies_playwright)
+                        page_url, url_list = get_urls_with_playwright(real_url, css_selector, price_selector, cookies=cookies_playwright)
                         if not page_url:  # 请求失败
                             debug_info = "网络请求错误: %s " % real_url
                             log_info += web_info + debug_info
@@ -591,7 +592,7 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
                     debug_info = "再次搜索地址: %s " % real_url
                     log_info += web_info + debug_info
                     cookies_playwright = convert_cookies_to_playwright_format(cookies, ".dmm.com")
-                    page_url, url_list = get_urls_with_playwright(real_url, css_selector, cookies=cookies_playwright)
+                    page_url, url_list = get_urls_with_playwright(real_url, css_selector, price_selector, cookies=cookies_playwright)
                     if not page_url:  # 请求失败
                         debug_info = "网络请求错误: %s " % real_url
                         log_info += web_info + debug_info
@@ -856,5 +857,5 @@ if __name__ == "__main__":
     # print(main('ABF-164'))
     # print(main('ABF-203'))
     # print(main('IPZZ-300'))
-    # print(main('SPRD-1139'))
+    # print(main('HODV-21938'))
     pass

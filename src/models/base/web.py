@@ -174,6 +174,7 @@ class WebRequests:
             self,
             url: str,
             css_selector: str,
+            price_selector: str,
             headers=None,
             cookies=None,
             proxies=True,
@@ -185,6 +186,7 @@ class WebRequests:
         参数:
             url (str): 目标页面的 URL。
             css_selector (str): 用于定位目标元素的 CSS 选择器。
+            price_selector (str):  用于定位价格元素的 CSS 选择器, 无价格的商品没有详情页 (HODV-21938, PRBY-089)
             proxies (dict): 代理服务器配置。
             cookies (list): Cookies 配置。
             headers (dict): 请求头配置。
@@ -274,9 +276,13 @@ class WebRequests:
                         # 一次性提取所有匹配的 href 属性值
                         url_list = page.eval_on_selector_all(
                             css_selector,
-                            """anchors => {
-                                return Array.from(anchors, a => a.href);
-                            }"""
+                            """(anchors, priceSelector) => {
+                                return Array.from(anchors).filter(a => {
+                                    const parentDiv = a.parentElement;
+                                    return parentDiv.querySelector(priceSelector) !== null;
+                                }).map(a => a.href);
+                            }""",
+                            price_selector  # 传递参数
                         )
                         # print(f"Using CSS Selector '{css_selector}':", url_list)
                         break  # 成功提取数据后退出循环
