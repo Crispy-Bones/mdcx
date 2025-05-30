@@ -831,6 +831,7 @@ class ManualConfig:
         "小●生": ("小学生",),
         "中●生": ("中学生",),
         "女子●生": ("女子校生",),
+        "お●らしキ": ("おもらしキ",),
     }
     actress_wiki_keywords = [
         "AV idol",
