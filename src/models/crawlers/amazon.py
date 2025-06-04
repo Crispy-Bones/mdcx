@@ -751,7 +751,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
         "min_length": 3,
         "pattern": pattern,
         "separator": r"\s+",
-        "extra_separator": [r"！+", r"…+", r"。+", r"～+"]
+        "extra_separator": [r"！+", r"…+", r"。+", r"～+", r"、+"]
     }
     no_split_title, no_split_title_list, search_title_list = _split_title(**params)
     print(f"\n==== 未拆分的标题列表 共 {len(no_split_title_list)} 个条目 ====")
@@ -877,9 +877,12 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         pic_url_filtered_set.add(pic_trunc_url)
                         continue
                     
-                    if pic_trunc_url in pic_url_filtered_set:
+                    if (
+                        pic_trunc_url in pic_url_filtered_set or
+                        pic_trunc_url in [element[0] for element in title_match_list]
+                        ):
                         invalid_result_count += 1
-                        print(f"\n跳过已过滤的结果\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
+                        print(f"\n跳过已过滤或标题匹配的结果\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
                         continue
                     
                     w, h = get_imgsize(pic_trunc_url)
@@ -911,8 +914,11 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                     print(f"\n/++++++++++++++++++检测有效结果+++++++++++++++++++++/")
                     print(f"搜索标题: {search_title}")
                     print(f"Amazon影片信息:\n影片类别: {amazon_category}\n影片标题: {amazon_title}\npic_trunc_url = {pic_trunc_url}")
-                    if pic_trunc_url in pic_url_filtered_set:
-                        print(f"\n跳过已过滤的图片url: {pic_trunc_url}")
+                    if (
+                        pic_trunc_url in pic_url_filtered_set or
+                        pic_trunc_url in [element[0] for element in title_match_list]
+                        ):
+                        print(f"\n跳过已过滤或标题匹配的图片url: {pic_trunc_url}")
                         continue
                     
                     # 获取待匹配的标题
