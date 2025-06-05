@@ -418,11 +418,11 @@ def _get_search_url(search_title):
         save-eligibility 表示绕过年龄限制, 直接显示成人内容, 出处: https://since2021-10-03.blogspot.com/2021/12/amazon-prime.html
     2. 标题中的空格转为 "+", "?", "&" 等半角符号需要转为全角 (对半角符号暂不做改动)
     2. 对标题进行 urllib.parse.quote_plus 编码
-    3. &i=dvd 表示搜索 DVD 类目, &ref=nb_sb_noss 表示自然搜索而非超级链接或推荐机制生成
+    3. &i=dvd 表示搜索 DVD 类目, &language=ja_JP 表示设定页面语言为日语, &ref=nb_sb_noss 表示自然搜索而非超级链接或推荐机制生成
     """
     url_search = (
         "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=/s?k="
-        + urllib.parse.quote_plus(search_title.replace(" ", "+") + "&i=dvd" + "&ref=nb_sb_noss")
+        + urllib.parse.quote_plus(search_title.replace(" ", "+") + "&i=dvd" + "&language=ja_JP" + "&ref=nb_sb_noss")
     )
     return url_search
 
@@ -436,7 +436,7 @@ def _check_title_matching(
                         no_split_match_ratio=0.5,
                         split_match_ratio=0.8,
                         long_title_length=60,
-                        length_ratio=0.4,
+                        length_ratio=0.35,
                         golden_ratio=0.618,
                         ):
     """
