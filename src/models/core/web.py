@@ -251,7 +251,6 @@ def _get_big_thumb(json_data):
     if json_data["cover_from"] == 'dmm':
         if json_data["cover"]:
             thumb_width, thumb_height = get_imgsize(json_data["cover"])
-            print(f"dmm thumb_width = {thumb_width}\ndmm thumb_height = {thumb_height}")
             # 对于存在 dmm 高清横版封面的影片, 尝试直接下载其竖版封面
             if (thumb_width >= 1700) and (thumb_width >  thumb_height):
                 json_data["logs"] += "\n 🖼 HD Dmm Thumb found! ({})({}s)".format(

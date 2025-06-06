@@ -518,7 +518,7 @@ class WebRequests:
                 if "amazon" in url:
                     response.encoding = "Shift_JIS"
                 else:
-                    response.encoding = "UFT-8"
+                    response.encoding = "UTF-8"
                 if response.status_code == 200:
                     signal.add_log(f"✅ 成功 {url}")
                     return response.headers, response.text
@@ -711,7 +711,8 @@ def get_amazon_data(req_url):
         "Accept-Language": "ja-JP,ja;q=0.9",
     }
     try:
-        result, html_info = curl_html(req_url)
+        # 强制获取日文页面信息, 否则有时会返回英文页面 YUJ-005, SCOP-081
+        result, html_info = curl_html(req_url, headers={"Accept-Language": "ja-JP,ja;q=0.9"})
     except:
         result, html_info = curl_html(req_url, headers=headers)
         session_id = ""

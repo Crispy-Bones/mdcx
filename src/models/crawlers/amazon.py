@@ -106,23 +106,48 @@ def _get_actor_list(json_data, title, raw_actor_list):
 
 def _remove_actor(title, actor_list):
     """
-    删除title末尾的所有存在于actor_list中的演员名(支持连续多个演员名), 保留标题中间的演员名
+    删除title末尾的所有存在于actor_list中的演员名(支持连续多个演员名), 
+    保留标题中间的演员名
+    删除末尾最后一个演员时保留左侧的符号 ADN-480, YUJ-005
     """
+    # 按长度降序排序演员名（避免短名匹配到长名的部分）
+    sorted_actors = sorted([a for a in actor_list if a], key=len, reverse=True)
+    
+    # 初始化缓冲区
+    connector_buffer = ""
+    
     while True:
-        removed = False  # 标记是否成功删除了演员名
-        for actor in actor_list:
-            # 确保actor不为空，并且标题以该演员名结尾
-            if actor and title.endswith(actor):
-                title = title[:-len(actor)]
-                # 删除多个演员名之间的符号, 保留字母, 数字, 中日文与'●|○', MEYD-012
-                title = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff●○]+$", "", title)
-                removed = True  # 标记已删除演员名
-                break  # 重新检查新的标题末尾
+        removed = False
         
-        # 如果没有删除任何演员名，则退出循环
+        for actor in sorted_actors:
+            # 检查标题是否以演员名结尾
+            if title.endswith(actor):
+                # 移除演员名
+                title = title[:-len(actor)]
+                
+                # 匹配连接符：任意非字母数字、非中日文字符（除●○外）
+                match = re.search(r'[^a-zA-Z0-9\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff●○]+$', title)
+                if match:
+                    # 覆盖缓冲区（不是累加）
+                    connector_buffer = match.group(0)
+                    # 移除连接符
+                    title = title[:match.start()]
+                else:
+                    # 没有连接符，清空缓冲区
+                    connector_buffer = ""
+                
+                removed = True
+                break
+        
         if not removed:
             break
-    return title
+    
+    # 将缓冲区内容添加到标题末尾
+    title += connector_buffer
+    
+    # 删除末尾空格
+    return title.rstrip()
+
 def _add_actor_to_title(title_list, best_match_actor, seq_flag="no actor first"):
     """
     将最符合的演员名添加到标题末尾，并按指定顺序交错排列。
@@ -336,21 +361,25 @@ def _split_title(
     # 原始标题长度
     no_split_title_length = len(no_split_title_list[0])
     
+    # 去除未拆分标题末尾的符号
+    no_split_title_list_no_symbol = [re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff●○]+$", "", title) for title in no_split_title_list]
+
     # 先以空格拆分
     split_title_with_space = []
     for title in no_split_title_list:
         split_title_with_space.extend(split_and_filter(title, no_split_title_length, actor_list, separator))
-    
     # 再以额外分隔符拆分
     if extra_separator:
         base_titles = split_title_with_space.copy() or no_split_title_list.copy()
         for extra in extra_separator:
             split_title_with_extra = []
             for title in base_titles:
-                split_title_with_extra.extend(split_and_filter(title, no_split_title_length, actor_list, extra))
+                temp_split_list = split_and_filter(title, no_split_title_length, actor_list, extra)
+                # 舍弃只删除未拆分标题末尾符号的元素 (有些标题只有保留末尾符号才能搜到 ADN-480)
+                temp_split_list = [tmp for tmp in temp_split_list if tmp not in no_split_title_list_no_symbol]
+                split_title_with_extra.extend(temp_split_list)
             # 将新分隔的结果合并到已有的标题列表中
             split_title_with_space.extend(split_title_with_extra)
-
     # 去除标题首尾的分隔符
     core_characters = [sep.rstrip('+') for sep in sep_patterns]
     pattern_str = f"({'|'.join(core_characters)})+"
@@ -359,8 +388,9 @@ def _split_title(
     end_separators_pattern = re.compile(f"{pattern_str}$")
     titles_no_actor = no_split_title_list + split_title_with_space
     for i in range(len(titles_no_actor)):
-        titles_no_actor[i] = start_separators_pattern.sub("", titles_no_actor[i]) # 去掉开头分隔符
-        titles_no_actor[i] = end_separators_pattern.sub("", titles_no_actor[i]) # 去掉末尾分隔符
+        if titles_no_actor[i] not in no_split_title_list:
+            titles_no_actor[i] = start_separators_pattern.sub("", titles_no_actor[i]) # 去掉开头分隔符
+            titles_no_actor[i] = end_separators_pattern.sub("", titles_no_actor[i]) # 去掉末尾分隔符
     
     # 合并所有有效标题片段并去重
     titles_no_actor = list(dict.fromkeys(titles_no_actor))
@@ -418,11 +448,11 @@ def _get_search_url(search_title):
         save-eligibility 表示绕过年龄限制, 直接显示成人内容, 出处: https://since2021-10-03.blogspot.com/2021/12/amazon-prime.html
     2. 标题中的空格转为 "+", "?", "&" 等半角符号需要转为全角 (对半角符号暂不做改动)
     2. 对标题进行 urllib.parse.quote_plus 编码
-    3. &i=dvd 表示搜索 DVD 类目, &language=ja_JP 表示设定页面语言为日语, &ref=nb_sb_noss 表示自然搜索而非超级链接或推荐机制生成
+    3. &i=dvd 表示搜索 DVD 类目, &language=ja_JP 表示设定页面语言为日语(去除此项, 改为在headers中设置), &ref=nb_sb_noss 表示自然搜索而非超级链接或推荐机制生成
     """
     url_search = (
         "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=/s?k="
-        + urllib.parse.quote_plus(search_title.replace(" ", "+") + "&i=dvd" + "&language=ja_JP" + "&ref=nb_sb_noss")
+        + urllib.parse.quote_plus(search_title.replace(" ", "+") + "&i=dvd" + "&ref=nb_sb_noss")
     )
     return url_search
 
@@ -802,7 +832,6 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
         
         # 获取搜索 url
         url_search = _get_search_url(search_title)
-        print(f"url_search = {url_search}")
         result, html_search = get_amazon_data(url_search)
 
         if result and html_search:
