@@ -151,10 +151,17 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
             title = title.replace(" " + each, "")
         cover_url = get_cover(html_detail)  # 获取cover
         poster_url = (
-            cover_url.replace("_web_h4", "_h1").replace("_1200.jpg", "_2125.jpg").replace("_tsp.jpg", "_actor.jpg") 
+            cover_url.replace("_web_h4", "_h1").replace("_tsp.jpg", "_actor.jpg")
         )
-        if not poster_url.endswith(("_2125.jpg", "_tsp.jpg")): # 防止刮削到横版poster (DLDSS-168)
-            poster_url = poster_url.replace(".jpg", "_2125.jpg")
+        poster_url = re.sub(
+            r'(-\d{3})(\.jpg)$|(_\d{4,}\.jpg)$|(_\d{4,})(-\d+\.jpg)$',
+            lambda m: (
+                f"{m.group(1)}_2125{m.group(2)}" if m.group(1) else
+                "_2125.jpg" if m.group(3) else
+                f"_2125{m.group(5)}"
+                ),
+            poster_url
+        )
         outline = get_outline(html_detail)
         tag = ""
         release = get_release(html_detail)
