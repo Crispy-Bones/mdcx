@@ -421,7 +421,8 @@ def _get_compare_title(pro_pattern, title, actor_list, pattern=None, operation_f
         title = re.sub(pattern, "", title).strip()
     
     # 去除括号中的内容, 一般是商品附加信息 常见于开头是 【メーカー特典あり】 或【Amazon.co.jp限定】的标题
-    title = re.sub("[(（][^)）]*[)）]", "", title).strip()
+    # 去除片假名 "ー", Amazon会使用 "~" 代替 ABP-825
+    title = re.sub("[(（][^)）]*[)）]|ー", "", title).strip()
     
     # 调用convert_half处理标题
     compare_title_list = convert_half(title, operation_flags)
@@ -702,7 +703,7 @@ def _check_detail_page(json_data, title_match_ele, actor_list):
     """
     detail_url = title_match_ele[1]
     amazon_title = title_match_ele[2]
-    promotion_keywords = ["特選アウトレット", "ベストヒッツ"]
+    promotion_keywords = ["特選アウトレット", "ベストヒッツ", "プレミアムプライス"]
     try:
         url_new = "https://www.amazon.co.jp" + re.findall(r"(/dp/[^/]+)", detail_url)[0]
     except:
