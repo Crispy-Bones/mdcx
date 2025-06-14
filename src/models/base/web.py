@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from threading import Lock
 from urllib.parse import quote
+from urllib.parse import urlparse
 
 # import cloudscraper
 import curl_cffi.requests
@@ -170,138 +171,131 @@ class WebRequests:
         signal.add_log(f"🔴 请求失败！{error_info}")
         return False, error_info
 
-    def get_urls_with_playwright(
+
+    def get_page_playwright(
             self,
             url: str,
-            css_selector: str,
-            price_selector: str,
             headers=None,
             cookies=None,
             proxies=True,
-            timeout=False,
+            timeout=None,
+            browser=None,
+            context=None
     ):
         """
-        使用 Playwright 提取指定 CSS 选择器匹配的图片 URL 列表。
-
+        创建 Playwright 页面对象并导航到目标 URL。
         参数:
             url (str): 目标页面的 URL。
-            css_selector (str): 用于定位目标元素的 CSS 选择器。
-            price_selector (str):  用于定位价格元素的 CSS 选择器, 无价格的商品没有详情页 (HODV-21938, PRBY-089)
-            proxies (dict): 代理服务器配置。
-            cookies (list): Cookies 配置。
             headers (dict): 请求头配置。
-            retry_times (int): 最大重试次数，默认为 3。
-            timeout (int): 每次操作的超时时间（毫秒），默认为 10000（10 秒）。
-
+            cookies (dict): Cookies 配置。
+            proxies (bool or dict): 是否启用代理或直接传入代理配置。
+            timeout (int): 每次操作的超时时间（秒）。
+            browser: Playwright 的浏览器实例。
+            context: Playwright 的上下文实例。
         返回:
-            list: 匹配元素的 href 属性值列表。
+            tuple: 包含 Playwright 的 page 对象和 timeout。
         """
-        with sync_playwright() as p:
-            if proxies:
-                standard_proxies = config.proxies
-                if standard_proxies and standard_proxies.get("http"):
-                    proxies = {
-                        "server": standard_proxies["http"],
-                        "bypass": "localhost,127.0.0.1"  # 可选，根据需求设置
-                    }
-                else:
-                    proxies = None
+        def convert_cookies(cookies, url):
+            """
+            将输入的 cookies 字符串转换为 Playwright 所需的格式。
+            输入示例：
+                cookies = {"cookie": "uid=abcd786561031111; age_check_done=1;"}
+                url = "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mide00726/?i3_ref=search&i3_ord=2"
+            输出示例：
+                [
+                    {"name": "uid", "value": "abcd786561031111", "domain": ".dmm.co.jp", "path": "/"},
+                    {"name": "age_check_done", "value": "1", "domain": ".dmm.co.jp", "path": "/"}
+                ]
+            """
+            if not cookies or "cookie" not in cookies:
+                return []
+            # 解析 URL 提取域名
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc  # 提取域名部分（如 www.dmm.co.jp）
+
+            # 移除子域名前缀（如 www），只保留主域名和顶级域名
+            domain_parts = domain.split(".")
+            if len(domain_parts) > 2 and domain_parts[0] == "www":
+                domain = ".".join(domain_parts[1:])  # 移除 "www."
+
+            # 确保域名以 "." 开头
+            if not domain.startswith("."):
+                domain = f".{domain}"
+
+            # 提取原始 cookie 字符串
+            raw_cookie_string = cookies["cookie"]
+
+            # 分割为单个 cookie 键值对
+            cookie_pairs = raw_cookie_string.split(";")
+
+            # 解析每个键值对
+            cookies_list = []
+            for pair in cookie_pairs:
+                pair = pair.strip()
+                if not pair:
+                    continue
+                key, value = pair.split("=", 1)  # 按第一个等号分割
+
+                # 添加到结果列表，统一绑定到解析出的 domain
+                cookies_list.append({
+                    "name": key.strip(),
+                    "value": value.strip(),
+                    "domain": domain,  # 使用解析出的 domain
+                    "path": "/"        # 默认路径
+                })
+            return cookies_list
+        
+        # 处理代理配置
+        if proxies is True:
+            standard_proxies = config.proxies
+            if standard_proxies and standard_proxies.get("http"):
+                proxies = {
+                    "server": standard_proxies["http"],
+                    "bypass": "localhost,127.0.0.1"  # 可选，根据需求设置
+                }
             else:
                 proxies = None
-                
-            # 启动浏览器并设置代理
-            browser = p.chromium.launch(
-                headless=True,  # 启用无头模式以提升性能
-                proxy=proxies
-            )
-
-            context = browser.new_context()
-
-            # 设置请求头
-            if not headers:
-                headers = config.headers
-            context.set_extra_http_headers(headers)
-
-            # 添加 Cookies
+        elif proxies is False:
+            proxies = None
+        
+        # 仅使用传入的context
+        if context is None:
+            raise ValueError("Context must be provided for page creation")
+        
+        # 设置请求头
+        if not headers:
+            headers = config.headers
+        context.set_extra_http_headers(headers)
+        
+        # 添加 Cookies
+        if cookies:
+            cookies = convert_cookies(cookies, url)
             context.add_cookies(cookies)
-            
-            # 设置重试次数和超时时间
-            retry_times = config.retry
-            
-            if not timeout:
-                timeout = config.timeout * 1000
-
-            # 创建页面并拦截不必要的资源
-            page = context.new_page()
-            page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font"] else route.continue_())
-
+        
+        # 设置超时时间
+        if not timeout:
+            timeout = config.timeout * 1000
+        
+        # 创建页面
+        page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font"] else route.continue_())
+        
+        attempt = 0
+        while attempt < config.retry:
+            attempt += 1
             try:
-                # 初始化变量
-                url_list = []
-                attempt = 0
+                signal.add_log(f"🔎 请求 {url}")
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                return page, timeout
+            except Exception as e:
+                error_info = f"{url}\nError: {e}"
+                if attempt < config.retry:
+                    signal.add_log(f"🔴 重试 [{attempt}/{config.retry}] {error_info}")
+                else:
+                    signal.add_log(f"🔴 页面导航失败! {error_info}")
+                    page.close()  # 关闭无效页面
+                    return None, timeout
 
-                while attempt < retry_times:
-                    attempt += 1
-                    # print(f"Attempt {attempt} of {retry_times}")
-
-                    try:
-                        # 导航到页面，使用 "domcontentloaded" 等待策略
-                        signal.add_log(f"🔎 请求 {url}")
-                        page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-                        
-                        # 停留 5 秒钟 (5000 毫秒)
-                        # page.wait_for_timeout(5000)
-                        
-                        # 获取实际加载的页面 URL
-                        if not page.url.endswith("/"):
-                            page_url = page.url + "/"
-                        else:
-                            page_url = page.url
-                        
-                        # 判断是否发生重定向
-                        if page_url != url:
-                            # print(f"Redirect detected: Original URL '{url}' -> Actual URL '{page_url}'")
-                            return page_url, []
-                        
-                        # 判断是否有搜索结果
-                        if "dmm" in url:
-                            no_results_element = page.query_selector('p[class="text-red-600 text-md font-bold"]')
-                        if no_results_element:
-                            # print("No search results")
-                            return page_url, []
-                        
-                        # 使用 CSS 选择器等待目标元素加载完成
-                        page.wait_for_selector(css_selector, state="attached", timeout=timeout)
-                        
-                        # 一次性提取所有匹配的 href 属性值
-                        url_list = page.eval_on_selector_all(
-                            css_selector,
-                            """(anchors, priceSelector) => {
-                                return Array.from(anchors).filter(a => {
-                                    const parentDiv = a.parentElement;
-                                    return parentDiv.querySelector(priceSelector) !== null;
-                                }).map(a => a.href);
-                            }""",
-                            price_selector  # 传递参数
-                        )
-                        # print(f"Using CSS Selector '{css_selector}':", url_list)
-                        break  # 成功提取数据后退出循环
-
-                    except Exception as e:
-                        error_info = f"{url}\nError: {e}"
-                        if attempt < retry_times:
-                            signal.add_log(f"🔴 重试 [{attempt + 1}/{retry_times}] {error_info}")
-                        else:
-                            signal.add_log(f"🔴 请求失败！{error_info}")
-                            return page_url if page else url, []
-
-            finally:
-                # 关闭浏览器
-                browser.close()
-
-            return page_url, url_list
-
-    
     def post_html(
         self, url: str, data=None, json=None, headers=None, cookies=None, proxies=True, json_data=False, keep=True
     ):
@@ -541,7 +535,7 @@ class WebRequests:
 
 web = WebRequests()
 get_html = web.get_html
-get_urls_with_playwright = web.get_urls_with_playwright
+get_page_playwright = web.get_page_playwright
 post_html = web.post_html
 scraper_html = web.curl_html
 multi_download = web.multi_download

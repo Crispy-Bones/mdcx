@@ -243,7 +243,6 @@ def _split_title(
     combined_pattern = "|".join(sep_patterns)
     # 编译正则表达式
     sep_regex = re.compile(combined_pattern)
-    print(f"sep_regex = {sep_regex}")
     # 如果没有匹配到分隔符，直接返回基础标题列表
     match = sep_regex.search(no_split_title_list[0])
     if not match:
@@ -408,7 +407,7 @@ def _split_title(
     return no_split_title, no_split_title_list, search_title_list
 
 
-def _get_compare_title(pro_pattern, title, actor_list, pattern=None, operation_flags=0b111):
+def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operation_flags=0b111):
     """
     1. 正则删除标题中的pattern
     2. 调用convert_half处理标题
@@ -455,6 +454,7 @@ def _get_search_url(search_title):
         "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=/s?k="
         + urllib.parse.quote_plus(search_title.replace(" ", "+") + "&i=dvd" + "&ref=nb_sb_noss")
     )
+    print(f"url_search: {url_search}\n")
     return url_search
 
 def _check_title_matching(
@@ -611,7 +611,7 @@ def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern,
         return "NO ACTOR"
     detail_title = re.findall(r".*/(.*)/dp/",detail_url)[0]
     print(f"详情链接中的标题: {detail_title}")
-    detail_compare_title, _ = _get_compare_title(pro_pattern, detail_title, actor_list, pattern=pattern)
+    detail_compare_title, _ = _get_compare_title(detail_title, actor_list, pro_pattern, pattern=pattern)
     print(f"待匹配的详情链标题: {detail_compare_title}")
     print(f"待匹配的Amazon标题: {amazon_compare_title}")
     for actor in actor_list:
@@ -813,7 +813,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
     
     # 将未拆分的标题进行处理
     print(f"\n生成待匹配的未拆分标题...")
-    no_split_compare_title, no_split_compare_title_no_actor  = _get_compare_title(pro_pattern, no_split_title, actor_list, pattern=pattern)
+    no_split_compare_title, no_split_compare_title_no_actor  = _get_compare_title(no_split_title, actor_list, pro_pattern, pattern=pattern)
     print(f"待匹配的未拆分的标题(若末尾存在演员名则保留):\nno_split_compare_title = {no_split_compare_title}")
     print(f"去除末尾演员名后:\nno_split_compare_title_no_actor = {no_split_compare_title_no_actor}")
     
@@ -952,8 +952,8 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         continue
                     
                     # 获取待匹配的标题
-                    compare_title, compare_title_no_actor = _get_compare_title(pro_pattern, search_title, actor_list, pattern=pattern)
-                    amazon_compare_title, amazon_compare_title_no_actor = _get_compare_title(pro_pattern, amazon_title, actor_list, pattern=pattern)
+                    compare_title, compare_title_no_actor = _get_compare_title(search_title, actor_list, pro_pattern, pattern=pattern)
+                    amazon_compare_title, amazon_compare_title_no_actor = _get_compare_title(amazon_title, actor_list, pro_pattern, pattern=pattern)
                     
                     # 判断标题是否匹配
                     # 只匹配去除末尾演员名的标题, 演员名单独匹配
