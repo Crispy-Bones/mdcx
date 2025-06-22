@@ -171,29 +171,26 @@ class WebRequests:
         signal.add_log(f"🔴 请求失败！{error_info}")
         return False, error_info
 
-
-    def get_page_playwright(
+    def get_url_playwright(
             self,
             url: str,
             headers=None,
             cookies=None,
             proxies=True,
             timeout=None,
-            browser=None,
-            context=None
+            css_selector=None
     ):
         """
-        创建 Playwright 页面对象并导航到目标 URL。
+        创建 Playwright 页面对象并导航到目标 URL，同时支持提取页面中的 URL 列表。
         参数:
             url (str): 目标页面的 URL。
             headers (dict): 请求头配置。
             cookies (dict): Cookies 配置。
             proxies (bool or dict): 是否启用代理或直接传入代理配置。
             timeout (int): 每次操作的超时时间（秒）。
-            browser: Playwright 的浏览器实例。
-            context: Playwright 的上下文实例。
+            css_selector (str): 用于定位目标元素的 CSS 选择器。
         返回:
-            tuple: 包含 Playwright 的 page 对象和 timeout。
+            tuple: 包含实际 URL 和提取的 URL 列表。
         """
         def convert_cookies(cookies, url):
             """
@@ -209,25 +206,21 @@ class WebRequests:
             """
             if not cookies or "cookie" not in cookies:
                 return []
+            
             # 解析 URL 提取域名
             parsed_url = urlparse(url)
             domain = parsed_url.netloc  # 提取域名部分（如 www.dmm.co.jp）
-
             # 移除子域名前缀（如 www），只保留主域名和顶级域名
             domain_parts = domain.split(".")
             if len(domain_parts) > 2 and domain_parts[0] == "www":
                 domain = ".".join(domain_parts[1:])  # 移除 "www."
-
             # 确保域名以 "." 开头
             if not domain.startswith("."):
                 domain = f".{domain}"
-
             # 提取原始 cookie 字符串
             raw_cookie_string = cookies["cookie"]
-
             # 分割为单个 cookie 键值对
             cookie_pairs = raw_cookie_string.split(";")
-
             # 解析每个键值对
             cookies_list = []
             for pair in cookie_pairs:
@@ -235,7 +228,6 @@ class WebRequests:
                 if not pair:
                     continue
                 key, value = pair.split("=", 1)  # 按第一个等号分割
-
                 # 添加到结果列表，统一绑定到解析出的 domain
                 cookies_list.append({
                     "name": key.strip(),
@@ -258,44 +250,79 @@ class WebRequests:
         elif proxies is False:
             proxies = None
         
-        # 仅使用传入的context
-        if context is None:
-            raise ValueError("Context must be provided for page creation")
-        
-        # 设置请求头
-        if not headers:
-            headers = config.headers
-        context.set_extra_http_headers(headers)
-        
-        # 添加 Cookies
-        if cookies:
-            cookies = convert_cookies(cookies, url)
-            context.add_cookies(cookies)
-        
-        # 设置超时时间
-        if not timeout:
-            timeout = config.timeout * 1000
-        
-        # 创建页面
-        page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font"] else route.continue_())
-        
-        attempt = 0
-        while attempt < config.retry:
-            attempt += 1
-            try:
-                signal.add_log(f"🔎 请求 {url}")
-                page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-                return page, timeout
-            except Exception as e:
-                error_info = f"{url}\nError: {e}"
-                if attempt < config.retry:
-                    signal.add_log(f"🔴 重试 [{attempt}/{config.retry}] {error_info}")
-                else:
-                    signal.add_log(f"🔴 页面导航失败! {error_info}")
-                    page.close()  # 关闭无效页面
-                    return None, timeout
-
+        # 启动浏览器并设置代理
+        p = sync_playwright().start()
+        browser = None
+        context = None
+        try:
+            browser = p.chromium.launch(headless=True, proxy=proxies)
+            context = browser.new_context()
+            # 设置请求头
+            if not headers:
+                headers = config.headers
+            context.set_extra_http_headers(headers)
+            
+            # 添加 Cookies
+            if cookies:
+                cookies = convert_cookies(cookies, url)
+                context.add_cookies(cookies)
+            
+            # 设置超时时间
+            if not timeout:
+                timeout = config.timeout * 1000
+            
+            # 创建页面
+            page = context.new_page()
+            page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font"] else route.continue_())
+            
+            attempt = 0
+            while attempt < config.retry:
+                attempt += 1
+                try:
+                    signal.add_log(f"🔎 请求 {url}")
+                    page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                    
+                    # 统一处理 URL 末尾的斜杠
+                    url = url.rstrip("/") + "/"
+                    actual_url = page.url.rstrip("/") + "/"
+                    
+                    # 判断重定向
+                    if actual_url != url:
+                        return actual_url, []
+                    # DMM 特定逻辑
+                    if "dmm" in url:
+                        no_results_element = page.query_selector('p.text-red-600.text-md.font-bold')
+                        if no_results_element:
+                            return actual_url, []
+                    # 如果提供了 CSS 选择器，则提取 URL 列表
+                    url_list = []
+                    if css_selector:
+                        # 等待元素加载
+                        page.wait_for_selector(css_selector, state="attached", timeout=timeout)
+                        
+                        # 提取匹配的 href 属性值
+                        url_list = page.eval_on_selector_all(
+                            css_selector,
+                            """(anchors) => Array.from(anchors).map(a => a.href)"""
+                        )
+                    
+                    return actual_url, url_list
+                
+                except Exception as e:
+                    error_info = f"{url}\nError: {e}"
+                    if attempt < config.retry:
+                        signal.add_log(f"🔴 重试 [{attempt}/{config.retry}] {error_info}")
+                    else:
+                        signal.add_log(f"🔴 页面导航失败! {error_info}")
+                        return None, []
+        finally:
+            # 确保资源正确释放
+            if context:
+                context.close()
+            if browser:
+                browser.close()
+            p.stop()
+    
     def post_html(
         self, url: str, data=None, json=None, headers=None, cookies=None, proxies=True, json_data=False, keep=True
     ):
@@ -535,7 +562,7 @@ class WebRequests:
 
 web = WebRequests()
 get_html = web.get_html
-get_page_playwright = web.get_page_playwright
+get_url_playwright = web.get_url_playwright
 post_html = web.post_html
 scraper_html = web.curl_html
 multi_download = web.multi_download

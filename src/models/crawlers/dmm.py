@@ -6,9 +6,7 @@ import time  # yapf: disable # NOQA: E402
 import urllib3
 from lxml import etree
 
-from models.base.web import check_url, get_html, get_page_playwright, post_html
-
-from playwright.sync_api import sync_playwright
+from models.base.web import check_url, get_html, get_url_playwright
 
 urllib3.disable_warnings()  # yapf: disable
 
@@ -234,80 +232,7 @@ def get_trailer(htmlcode, detail_url):
             trailer_url = ""
     return trailer_url
 
-def get_detail_url(
-        url: str,
-        cookies: dict,
-        css_selector: str,
-        timeout: int = 10000,
-        browser=None,
-        context=None
-):
-    own_browser = False
-    own_context = False
-    
-    try:
-        # 管理浏览器生命周期
-        if browser is None:
-            p = sync_playwright().start()
-            browser = p.chromium.launch(headless=True)
-            own_browser = True
-        
-        # 管理上下文生命周期
-        if context is None:
-            context = browser.new_context()
-            own_context = True
-        
-        # 获取页面并处理None返回值
-        result = get_page_playwright(
-            url=url,
-            cookies=cookies,
-            browser=browser,
-            context=context,
-            timeout=timeout
-        )
-        
-        if result is None:
-            return "", []
-        
-        page, timeout = result
-        
-        # 统一处理 URL 末尾的斜杠
-        url = url.rstrip("/") + "/"
-        actual_url = page.url.rstrip("/") + "/"
-        
-        # 判断重定向
-        if actual_url != url:
-            return actual_url, []
-        
-        # DMM 特定逻辑
-        if "dmm" in url:
-            no_results_element = page.query_selector('p.text-red-600.text-md.font-bold')
-            if no_results_element:
-                return actual_url, []
-        
-        # 等待元素
-        page.wait_for_selector(css_selector, state="attached", timeout=timeout)
-        
-        # 提取URL
-        url_list = page.eval_on_selector_all(
-            css_selector,
-            """(anchors) => Array.from(anchors).map(a => a.href)"""
-        )
-        
-        return actual_url, url_list
-    
-    except Exception as e:
-        print(f"Error processing {url}: {str(e)}")
-        return "", []
-    finally:
-        # 按需释放资源
-        if own_context:
-            context.close()
-        if own_browser:
-            browser.close()
-
-
-def get_detail_list(url_list, number, number2, file_path):
+def get_detail_url(url_list, number, number2, file_path):
     number_temp = number2.lower().replace("-", "")
     # https://tv.dmm.co.jp/list/?content=mide00726&i3_ref=search&i3_ord=1
     # https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mide00726/?i3_ref=search&i3_ord=2
@@ -393,9 +318,8 @@ def main(number, specified_url="", log_info="", req_web="", language="jp", file_
         log_info += web_info + debug_info
 
     try:
-        # tv.dmm未屏蔽非日本ip，此处请求页面，看是否可以访问
         if "tv.dmm." not in search_url:
-            page_url, url_list = get_detail_url(search_url, cookies=cookies, css_selector=css_selector)
+            page_url, url_list = get_url_playwright(search_url, cookies=cookies, css_selector=css_selector)
             # print(f"page_url: {page_url}, url_list: {url_list}")
             if not page_url:  # 请求失败
                 debug_info = "网络请求错误: %s " % search_url
@@ -416,7 +340,7 @@ def main(number, specified_url="", log_info="", req_web="", language="jp", file_
 
             # 未指定详情页地址时，获取详情页地址（刚才请求的是搜索页）
             if not specified_url:
-                detail_url_list, number = get_detail_list(url_list, number, number, file_path)
+                detail_url_list, number = get_detail_url(url_list, number, number, file_path)
                 if not detail_url_list:
                     debug_info = "搜索结果: 未匹配到番号！"
                     log_info += web_info + debug_info
@@ -426,13 +350,13 @@ def main(number, specified_url="", log_info="", req_web="", language="jp", file_
                         )  # 不带00，旧作 snis-027
                         debug_info = "再次搜索地址: %s " % search_url
                         log_info += web_info + debug_info
-                        page_url, url_list = get_detail_url(search_url, cookies=cookies, css_selector=css_selector)
+                        page_url, url_list = get_url_playwright(search_url, cookies=cookies, css_selector=css_selector)
                         if not page_url:  # 请求失败
                             debug_info = "网络请求错误: %s " % search_url
                             log_info += web_info + debug_info
                             raise Exception(debug_info)
                         # html = etree.fromstring(htmlcode, etree.HTMLParser())
-                        detail_url_list, number = get_detail_list(url_list, number, number_no_00, file_path)
+                        detail_url_list, number = get_detail_url(url_list, number, number_no_00, file_path)
                         if not detail_url_list:
                             debug_info = "搜索结果: 未匹配到番号！"
                             log_info += web_info + debug_info
@@ -442,13 +366,13 @@ def main(number, specified_url="", log_info="", req_web="", language="jp", file_
                     search_url = "https://www.dmm.com/search/=/searchstr=%s/sort=ranking/" % number_no_00
                     debug_info = "再次搜索地址: %s " % search_url
                     log_info += web_info + debug_info
-                    page_url, url_list = get_detail_url(search_url, cookies=cookies, css_selector=css_selector)
+                    page_url, url_list = get_url_playwright(search_url, cookies=cookies, css_selector=css_selector)
                     if not page_url:  # 请求失败
                         debug_info = "网络请求错误: %s " % search_url
                         log_info += web_info + debug_info
                         raise Exception(debug_info)
                     # html = etree.fromstring(htmlcode, etree.HTMLParser())
-                    detail_url_list, number0 = get_detail_list(url_list, number, number_no_00, file_path)
+                    detail_url_list, number0 = get_detail_url(url_list, number, number_no_00, file_path)
                     if not detail_url_list:
                         debug_info = "搜索结果: 未匹配到番号！"
                         log_info += web_info + debug_info

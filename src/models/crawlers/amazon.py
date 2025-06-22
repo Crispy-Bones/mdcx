@@ -420,8 +420,7 @@ def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operat
         title = re.sub(pattern, "", title).strip()
     
     # 去除括号中的内容, 一般是商品附加信息 常见于开头是 【メーカー特典あり】 或【Amazon.co.jp限定】的标题
-    # 去除片假名 "ー", Amazon会使用 "~" 代替 ABP-825
-    title = re.sub("[(（][^)）]*[)）]|ー", "", title).strip()
+    title = re.sub("[(（][^)）]*[)）]", "", title).strip()
     
     # 调用convert_half处理标题
     compare_title_list = convert_half(title, operation_flags)
@@ -430,6 +429,8 @@ def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operat
     if pro_pattern:
         for i in range(len(compare_title_list)):
             compare_title_list[i] = re.sub(pro_pattern, "", compare_title_list[i]).strip()
+            # 去除片假名 "ー", Amazon有时会使用 "~" 代替; ABP-825
+            compare_title_list[i] = re.sub("ー", "", compare_title_list[i]).strip()
     
     # 删除标题末尾的演员名
     compare_title_no_actor = _remove_actor(compare_title_list[0], actor_list)
