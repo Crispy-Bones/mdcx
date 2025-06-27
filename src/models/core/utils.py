@@ -204,21 +204,6 @@ def replace_special_word(json_data):
     for key, value in config.special_word.items():
         for each in all_key_word:
             json_data[each] = json_data[each].replace(key, value[0])
-
-def convert_half(string, operation_flags=0b111):
-    """
-    对输入字符串进行多阶段文本处理，处理流程由操作标志位控制
-    
-    参数:
-        string (str): 输入字符串
-        operation_flags (int): 位标志控制处理流程（默认执行全部操作）
-            - 0b001（1）: 敏感词替换（包含模糊字符处理）
-            - 0b010（2）: 全角转半角字符
-            - 0b100（4）: 清理格式并转为大写
-    
-    返回:
-        list: 处理后的字符串列表，元素为所有可能的转换结果
-    """
     
 def convert_half(string, operation_flags=0b111):
     """
