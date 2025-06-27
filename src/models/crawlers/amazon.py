@@ -424,16 +424,17 @@ def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operat
     
     # 调用convert_half处理标题
     compare_title_list = convert_half(title, operation_flags)
-    
     # 删除Amazon标题中的制作商
     if pro_pattern:
         for i in range(len(compare_title_list)):
             compare_title_list[i] = re.sub(pro_pattern, "", compare_title_list[i]).strip()
-            # 去除片假名 "ー", Amazon有时会使用 "~" 代替; ABP-825
-            compare_title_list[i] = re.sub("ー", "", compare_title_list[i]).strip()
     
     # 删除标题末尾的演员名
     compare_title_no_actor = _remove_actor(compare_title_list[0], actor_list)
+    
+    # 去除片假名 "ー", Amazon有时会使用 "~" 代替; ABP-825
+    compare_title_no_actor = re.sub("ー", "", compare_title_no_actor)
+    compare_title_list[0] = re.sub("ー", "", compare_title_list[0])
     
     return compare_title_list[0], compare_title_no_actor
 
@@ -612,7 +613,7 @@ def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern,
         return "NO ACTOR"
     detail_title = re.findall(r".*/(.*)/dp/",detail_url)[0]
     print(f"详情链接中的标题: {detail_title}")
-    detail_compare_title, _ = _get_compare_title(detail_title, actor_list, pro_pattern, pattern=pattern)
+    detail_compare_title = convert_half(detail_title, operation_flags=0b100)[0]
     print(f"待匹配的详情链标题: {detail_compare_title}")
     print(f"待匹配的Amazon标题: {amazon_compare_title}")
     for actor in actor_list:
@@ -772,7 +773,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
     actor_list, best_match_actor = _get_actor_list(json_data, original_title, raw_actor_list)
 
     # 移除标题中匹配的pattern
-    pattern = r"^\[.*?\]|^【.*?】|DVD|オンラインコード版|（DOD）|（BOD）"
+    pattern = r"^(?:\[[^\[]*?\]|【[^】]*?】)+|DVD|オンラインコード版|（DOD）|（BOD）"
     
     # 拆分标题
     print(f"\n开始生成搜索标题列表...")
@@ -809,7 +810,9 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
     amazon_producer = list(dict.fromkeys(amazon_producer))
     print(f"amazon_producer = {amazon_producer}")
     if amazon_producer:
-        pro_pattern = "|".join(re.escape(p) for p in amazon_producer if p.strip())
+        # 按照字符串长度降序排序，确保更长的字符串优先匹配, 例如 ['NAGIRA', 'NAGIRAナギラ'], 保证先匹配 'NAGIRAナギラ'
+        sorted_amazon_producer = sorted(amazon_producer, key=lambda x: -len(x))
+        pro_pattern = "|".join(re.escape(p) for p in sorted_amazon_producer if p.strip())
         print(f"pro_pattern = {pro_pattern}")
     
     # 将未拆分的标题进行处理
@@ -925,7 +928,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         continue
                     
                     # 避免单体作品取到合集结果 GVH-435
-                    collection_keywords = ['BEST', '時間', '総集編', '完全', '枚組']
+                    collection_keywords = ['BEST', '時間', '総集編', '完全', '枚組', '特別拡大版']
                     skip_flag = False
                     for collection_keyword in collection_keywords:
                         is_collection1 = collection_keyword in str(no_split_title_list[0]).upper()
