@@ -93,7 +93,7 @@ def _get_new_website_list(field_website_list, number_website_list, file_number, 
             same_list.insert(0, "mgstage")
 
     # faleno.jp 番号检查 dldss177 dhla009
-    elif re.findall(r"F[A-Z]{2}SS", file_number):
+    elif re.findall(r"F[A-Z]{2}SS", file_number) or file_number.startswith("FNS"):
         same_list = _deal_some_list(field, "faleno", same_list)
 
     # dahlia-av.jp 番号检查

@@ -813,7 +813,9 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
         # 按照字符串长度降序排序，确保更长的字符串优先匹配, 例如 ['NAGIRA', 'NAGIRAナギラ'], 保证先匹配 'NAGIRAナギラ'
         sorted_amazon_producer = sorted(amazon_producer, key=lambda x: -len(x))
         pro_pattern = "|".join(re.escape(p) for p in sorted_amazon_producer if p.strip())
-        print(f"pro_pattern = {pro_pattern}")
+    else:
+        pro_pattern = ""
+    print(f"pro_pattern = {pro_pattern}")
     
     # 将未拆分的标题进行处理
     print(f"\n生成待匹配的未拆分标题...")
