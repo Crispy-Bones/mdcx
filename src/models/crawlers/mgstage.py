@@ -297,5 +297,5 @@ if __name__ == "__main__":
     # print(main('383reiw-043', ''))
     # print(main("300MIUM-382", "https://www.mgstage.com/product/product_detail/300MIUM-382/"))
     # print(main("292MY-831"))
-    print(main("348NTR-019"))
+    # print(main("348NTR-019"))
     pass
