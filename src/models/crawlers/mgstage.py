@@ -136,6 +136,7 @@ def getOutline(html):
     if not result:
         temp = html.xpath('//*[@id="introduction"]/dd')
         result = temp[0].xpath("string(.)").replace(" ", "").strip() if temp else ""
+        result = re.sub(r"…すべてを見る$", "", result)
     return result
 
 
@@ -295,4 +296,6 @@ if __name__ == "__main__":
     # print(main('300MIUM-382'))
     # print(main('383reiw-043', ''))
     # print(main("300MIUM-382", "https://www.mgstage.com/product/product_detail/300MIUM-382/"))
+    # print(main("292MY-831"))
+    print(main("348NTR-019"))
     pass
