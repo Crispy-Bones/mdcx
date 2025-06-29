@@ -224,7 +224,6 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", mosaic=
     cookie = config.javbus
     headers_o = {
         "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-        "cookie": cookie,
     }
     headers.update(headers_o)
 

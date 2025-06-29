@@ -2406,7 +2406,7 @@ class MyMAinWindow(QMainWindow):
         # self.Ui.pushButton_check_javbus_cookie.setEnabled(False)
         tips = "✅ 连接正常！"
         input_cookie = self.Ui.plainTextEdit_cookie_javbus.toPlainText()
-        new_cookie = {"cookie": input_cookie}
+        new_cookie = {"Cookie": input_cookie}
         cookies = config.javbus
         headers_o = config.headers
         headers = {
