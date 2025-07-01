@@ -485,7 +485,9 @@ def _check_title_matching(
         4. 去除敏感词
     匹配条件(按优先级排列):
         未拆分标题匹配, compare_title == no_split_compare_title
-            a. len_amazon/len_compare <= length_diff_ratio, 避免过短未拆分标题匹配到过长Amazon标题 (JUX-925)
+            a. 比较标题长度差异
+                1). len_amazon/len_compare <= length_diff_ratio, 避免过短未拆分标题匹配到过长Amazon标题 (JUX-925)
+                2). len_compare/len_amazon <= length_diff_ratio * 2, 避免过长未拆分标题匹配到过短Amazon标题 (JUL-076)
             b. 匹配位置必须是Amazon的标题首字符 (ATID-586)
             c. 未拆分标题长度<=min_match_length, 要求短标题完全匹配长标题 (JUX-925)
             d. 未拆分标题长度>min_match_length 且 <=mid_title_length , 要求匹配长度>= min(min_match_length, len(短标题)) (ATID-586)
@@ -521,9 +523,9 @@ def _check_title_matching(
         #     print(f"标题长度差异过大, 匹配失败!")
         #     return False
         
-        # 改为 Amazon标题长度不能超过未拆分标题长度的 {length_diff_ratio} 倍
-        if len_amazon > len_compare * length_diff_ratio:
-            print(f"Amazon标题过长, 未拆分标题过短, 匹配失败!")
+        # 改为 Amazon标题长度不能超过未拆分标题长度的 {length_diff_ratio} 倍并且未拆分标题长度不能超过 Amazon标题长度的 {length_diff_ratio * 2} 倍
+        if (len_amazon > len_compare * length_diff_ratio) or (len_compare > len_amazon * length_diff_ratio * 2):
+            print(f"标题长度差异过大, 匹配失败!")
             return False
         
         if len_compare <= min_match_length:
