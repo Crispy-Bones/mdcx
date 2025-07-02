@@ -420,7 +420,9 @@ def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operat
         title = re.sub(pattern, "", title).strip()
     
     # 去除括号中的内容, 一般是商品附加信息 常见于开头是 【メーカー特典あり】 或【Amazon.co.jp限定】的标题
-    title = re.sub("[(（][^)）]*[)）]", "", title).strip()
+    # 例如 "【メーカー特典あり】高級肉便器。完ぺきなドM女お貸しします。綾瀬天（パンティ&証明写真）（初回限定）[DVD] "
+    # 排除括号中包含 "脅迫スイートルーム" 的标题
+    title = re.sub("[(（](?!.*脅迫スイートルーム)[^)）]*[)）]", "", title).strip()
     
     # 调用convert_half处理标题
     compare_title_list = convert_half(title, operation_flags)
