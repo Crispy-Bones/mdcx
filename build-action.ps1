@@ -1,6 +1,8 @@
 $env:PYTHONPATH = "$PWD\src"
 
-python -m PyInstaller -n MDCx -F `
+$currentDate = Get-Date -Format "MMdd"
+
+python -m PyInstaller -n "MDCx_$currentDate" -F `
 -i resources/Img/MDCx.ico `
 -w main.py `
 -p "./src" `
