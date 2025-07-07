@@ -407,7 +407,7 @@ def _split_title(
     return no_split_title, no_split_title_list, search_title_list
 
 
-def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operation_flags=0b111):
+def _get_compare_title(title, actor_list, producer_pattern=None, pattern=None, operation_flags=0b111):
     """
     1. 正则删除标题中的pattern
     2. 调用convert_half处理标题
@@ -427,9 +427,13 @@ def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operat
     # 调用convert_half处理标题
     compare_title_list = convert_half(title, operation_flags)
     # 删除Amazon标题中的制作商
-    if pro_pattern:
-        for i in range(len(compare_title_list)):
-            compare_title_list[i] = re.sub(pro_pattern, "", compare_title_list[i]).strip()
+    if producer_pattern:
+        if re.search(producer_pattern, compare_title_list[0]):
+            producer_match = True
+            for i in range(len(compare_title_list)):
+                compare_title_list[i] = re.sub(producer_pattern, "", compare_title_list[i]).strip()
+        else:
+            producer_match = False
     
     # 删除标题末尾的演员名
     compare_title_no_actor = _remove_actor(compare_title_list[0], actor_list)
@@ -438,7 +442,7 @@ def _get_compare_title(title, actor_list, pro_pattern=None, pattern=None, operat
     compare_title_no_actor = re.sub("ー", "", compare_title_no_actor)
     compare_title_list[0] = re.sub("ー", "", compare_title_list[0])
     
-    return compare_title_list[0], compare_title_no_actor
+    return compare_title_list[0], compare_title_no_actor, producer_match
 
 def _get_search_url(search_title):
     """
@@ -465,6 +469,7 @@ def _check_title_matching(
                         compare_title,
                         amazon_compare_title,
                         no_split_compare_title,
+                        producer_match,
                         length_diff_ratio=5,
                         min_match_length=4,
                         mid_title_length=12,
@@ -500,9 +505,13 @@ def _check_title_matching(
             c. 如果Amazon标题长度 > min_match_length
                 1). 要求匹配长度>= min_match_length, 这样是为了保证搜索的结果的前 min_match_length 个字符与未拆分标题相同
                 2). 如果 len_no_split > long_title_length
-                    要求 min(len_no_split, len_amazon)/max(len_no_split, len_amazon) >= length_ratio
-                    要求匹配长度 >= math.floor(min(len_no_split, len_amazon) * golden_ratio)
-                    这是专门针对超长标题且搜索结果类同的系列影片 (HUNTA-145)
+                    i. len_amazon/len_no_split < length_ratio
+                        要求 (producer_match == True) and amazon_compare_title 完全匹配 no_split_compare_title
+                        针对于amazon标题相对于dmm过短的情况 (JYMA-006)
+                    ii. 其他情况
+                        要求 min(len_no_split, len_amazon)/max(len_no_split, len_amazon) >= length_ratio
+                        要求匹配长度 >= math.floor(min(len_no_split, len_amazon) * golden_ratio)
+                        这是专门针对超长标题且搜索结果类同的系列影片 (HUNTA-145)
             d. 再将Amazon标题与拆分标题匹配匹配, 匹配位置必须是拆分标题首字符
             e. 拆分标题长度<= match.ceil(1.5 * min_match_length), 要求短标题完全匹配长标题
             f. 拆分标题长度> match.ceil(1.5 * min_match_length), 要求匹配长度 >= min(math.ceil(len(拆分标题长度) * split_match_ratio), len(短标题))
@@ -575,20 +584,30 @@ def _check_title_matching(
                 return False
             # 超长标题匹配
             if len_no_split > long_title_length:
-                if min(len_no_split, len_amazon)/max(len_no_split, len_amazon) < length_ratio:
-                    print(f"超长标题, 长度比 < {length_ratio}, 匹配失败!")
-                    return False
+                print(f"未拆分标题为超长标题, length = {len_no_split}, 需额外匹配")
+                if len_amazon/len_no_split < length_ratio:
+                    if producer_match and (amazon_compare_title in no_split_compare_title):
+                        print(f"Amazon标题不满足长度比, 但制作商匹配且Amazon标题完全匹配未拆分标题, 继续匹配")
+                        pass
+                    else:
+                        print(f"producer_match = {producer_match}")
+                        print(f"Amazon标题不满足长度比, 匹配失败!")
+                        return False
                 else:
-                    print(f"超长标题, 长度比 >= {length_ratio}, 继续匹配")
-                    pass
-                required_match_length = math.floor(min(len_no_split, len_amazon) * golden_ratio)
-                substring = amazon_compare_title[:required_match_length]  # 从 amazon_compare_title 的首字符开始截取
-                if substring in no_split_compare_title:  # 判断子串是否出现在 no_split_compare_title 中
-                    print(f"超长标题, 匹配率 >= {golden_ratio}, 符合要求, 继续匹配")
-                    pass
-                else:
-                    print(f"超长标题, 匹配率 < {golden_ratio}, 匹配失败!")
-                    return False
+                    if min(len_no_split, len_amazon)/max(len_no_split, len_amazon) < length_ratio:
+                        print(f"超长标题, 长度比 < {length_ratio}, 匹配失败!")
+                        return False
+                    else:
+                        print(f"超长标题, 长度比 >= {length_ratio}, 继续匹配")
+                        pass
+                    required_match_length = math.floor(min(len_no_split, len_amazon) * golden_ratio)
+                    substring = amazon_compare_title[:required_match_length]  # 从 amazon_compare_title 的首字符开始截取
+                    if substring in no_split_compare_title:  # 判断子串是否出现在 no_split_compare_title 中
+                        print(f"超长标题, 匹配率 >= {golden_ratio}, 符合要求, 继续匹配")
+                        pass
+                    else:
+                        print(f"超长标题, 匹配率 < {golden_ratio}, 匹配失败!")
+                        return False
         print(f"未拆分标题匹配通过, 再与拆分标题匹配")
         if len_compare <= math.ceil(1.5 * min_match_length):
             if short_title in long_title and compare_title.startswith(short_title):
@@ -607,7 +626,7 @@ def _check_title_matching(
                 print(f"匹配长度 < {required_match_length}, 匹配失败!")
                 return False
 
-def _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern, pattern):
+def _check_title_actor(amazon_compare_title,detail_url, actor_list, producer_pattern, pattern):
     """
     检查详情页链接中的演员是否匹配
     """
@@ -816,14 +835,14 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
     if amazon_producer:
         # 按照字符串长度降序排序，确保更长的字符串优先匹配, 例如 ['NAGIRA', 'NAGIRAナギラ'], 保证先匹配 'NAGIRAナギラ'
         sorted_amazon_producer = sorted(amazon_producer, key=lambda x: -len(x))
-        pro_pattern = "|".join(re.escape(p) for p in sorted_amazon_producer if p.strip())
+        producer_pattern = "|".join(re.escape(p) for p in sorted_amazon_producer if p.strip())
     else:
-        pro_pattern = ""
-    print(f"pro_pattern = {pro_pattern}")
+        producer_pattern = ""
+    print(f"producer_pattern = {producer_pattern}")
     
     # 将未拆分的标题进行处理
     print(f"\n生成待匹配的未拆分标题...")
-    no_split_compare_title, no_split_compare_title_no_actor  = _get_compare_title(no_split_title, actor_list, pro_pattern, pattern=pattern)
+    no_split_compare_title, no_split_compare_title_no_actor, _  = _get_compare_title(no_split_title, actor_list, producer_pattern, pattern=pattern)
     print(f"待匹配的未拆分的标题(若末尾存在演员名则保留):\nno_split_compare_title = {no_split_compare_title}")
     print(f"去除末尾演员名后:\nno_split_compare_title_no_actor = {no_split_compare_title_no_actor}")
     
@@ -926,7 +945,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         continue
                     
                     w, h = get_imgsize(pic_trunc_url)
-                    if w < 700 or w >= h:
+                    if w < 700 or w > h:
                         print(f"\n图片非高清或非竖版, 跳过\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
                         invalid_result_count += 1
                         print(f"添加到过滤集合, 继续检测其他搜索结果")
@@ -962,15 +981,15 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         continue
                     
                     # 获取待匹配的标题
-                    compare_title, compare_title_no_actor = _get_compare_title(search_title, actor_list, pro_pattern, pattern=pattern)
-                    amazon_compare_title, amazon_compare_title_no_actor = _get_compare_title(amazon_title, actor_list, pro_pattern, pattern=pattern)
+                    compare_title, compare_title_no_actor, _ = _get_compare_title(search_title, actor_list, producer_pattern, pattern=pattern)
+                    amazon_compare_title, amazon_compare_title_no_actor, producer_match = _get_compare_title(amazon_title, actor_list, producer_pattern, pattern=pattern)
                     
                     # 判断标题是否匹配
                     # 只匹配去除末尾演员名的标题, 演员名单独匹配
                     print(f"待匹配的搜索标题: {compare_title_no_actor}")
                     print(f"待匹配的Amazon标题: {amazon_compare_title_no_actor}")
                     print(f"待匹配的未拆分标题(末尾不含演员名): {no_split_compare_title_no_actor}")
-                    is_match = _check_title_matching(compare_title_no_actor, amazon_compare_title_no_actor, no_split_compare_title_no_actor)
+                    is_match = _check_title_matching(compare_title_no_actor, amazon_compare_title_no_actor, no_split_compare_title_no_actor, producer_match)
                     
                     if is_match:
                         print(f"标题匹配成功!")
@@ -978,7 +997,7 @@ def get_big_pic_by_amazon(json_data, original_title, raw_actor_list):
                         detail_url_full = "https://www.amazon.co.jp" + detail_url
                         
                         # 判断演员是否匹配
-                        check_title_actor = _check_title_actor(amazon_compare_title,detail_url, actor_list, pro_pattern, pattern)
+                        check_title_actor = _check_title_actor(amazon_compare_title,detail_url, actor_list, producer_pattern, pattern)
                         if check_title_actor == "ACTOR MATCH":
                             print(f"演员匹配成功, 采用此结果!\n标题: {amazon_title}\n图片url: {pic_trunc_url}")
                             hd_pic_url = pic_trunc_url
