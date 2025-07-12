@@ -93,7 +93,7 @@ def _get_new_website_list(field_website_list, number_website_list, file_number, 
             same_list.insert(0, "mgstage")
 
     # faleno.jp 番号检查 dldss177 dhla009
-    elif re.findall(r"F[A-Z]{2}SS", file_number):
+    elif re.findall(r"F[A-Z]{2}SS", file_number) or file_number.startswith("FNS"):
         same_list = _deal_some_list(field, "faleno", same_list)
 
     # dahlia-av.jp 番号检查
@@ -592,6 +592,8 @@ def _deal_each_field(all_json_data, json_data, website_list, field_name, field_c
             json_data[field_name] = web_data_json[field_name]
             json_data["fields_info"] += "\n     " + "%-13s" % field_name + f": {website} ({title_language})"
             json_data["log_info"] += f"\n    🟢 {website} (成功)\n     ↳ {json_data[field_name]}"
+            json_data["amazon_studio"] = json_data["studio"]
+            json_data["amazon_publisher"] = json_data["publisher"]
             break
         else:
             json_data["log_info"] += f"\n    🔴 {website} (失败)"
@@ -922,12 +924,6 @@ def _crawl(json_data, website_name):  # 从JSON返回元数据
     # 原标题，用于amazon搜索
     originaltitle = json_data.get("originaltitle") if json_data.get("originaltitle") else ""
     json_data["originaltitle_amazon"] = originaltitle
-    for each in json_data["actor_amazon"]:  # 去除演员名，避免搜索不到
-        try:
-            end_actor = re.compile(r" %s$" % each)
-            json_data["originaltitle_amazon"] = re.sub(end_actor, "", json_data["originaltitle_amazon"])
-        except:
-            pass
 
     # VR 时下载小封面
     if "VR" in number:

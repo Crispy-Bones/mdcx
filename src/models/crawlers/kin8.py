@@ -220,4 +220,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 if __name__ == "__main__":
     # yapf: disable
     # print(main('kin8-3681'))
-    print(main(number="", appoint_url="https://www.kin8tengoku.com/moviepages/1232/index.html"))
+    # print(main(number="", appoint_url="https://www.kin8tengoku.com/moviepages/1232/index.html"))
+    pass

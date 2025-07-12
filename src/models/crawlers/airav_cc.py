@@ -333,4 +333,5 @@ if __name__ == "__main__":
     # print(main('ssis-200', ''))     # 多个搜索结果
     # print(main('JUY-331', ''))      # 存在系列字段
     # print(main('SONE-248', ''))      # 简介存在无效信息  "*根据分发方式,内容可能会有所不同"
-    print('CAWD-688', '')  # 无码破解
+    # print('CAWD-688', '')  # 无码破解
+    pass

@@ -281,4 +281,5 @@ if __name__ == "__main__":
     # print(main('SSIS-623', ''))
     # print(main('MIDV-002', ''))
     # print(main('MIDV256', ''))
-    print(main("SSNI-531"))  # print(main('SSIS-090', ''))  # print(main('SNIS-016', ''))
+    # print(main("SSNI-531"))  # print(main('SSIS-090', ''))  # print(main('SNIS-016', ''))
+    pass

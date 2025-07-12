@@ -6,9 +6,7 @@ import time  # yapf: disable # NOQA: E402
 import urllib3
 from lxml import etree
 
-from models.base.web import check_url, get_dmm_trailer, get_html, post_html
-
-from playwright.sync_api import sync_playwright
+from models.base.web import check_url, get_html, get_url_playwright
 
 urllib3.disable_warnings()  # yapf: disable
 
@@ -47,12 +45,12 @@ def get_mosaic(html):
 
 
 def get_studio(html):
-    result = html.xpath("//a[@data-i3pst='info_maker']/text()")
+    result = html.xpath("//td[contains(text(),'メーカー')]/following-sibling::td/a/text()")
     return result[0] if result else ""
 
 
 def get_publisher(html, studio):
-    result = html.xpath("//a[@data-i3pst='info_label']/text()")
+    result = html.xpath("//td[contains(text(),'レーベル')]/following-sibling::td/a/text()")
     return result[0] if result else studio
 
 
@@ -99,12 +97,12 @@ def get_tag(html):
     return str(result).strip(" ['']").replace("', '", ",")
 
 
-def get_cover(html, real_url):
-    if "mono/dvd" in real_url:
+def get_cover(html, detail_url):
+    if "mono/dvd" in detail_url:
         result = html.xpath('//meta[@property="og:image"]/@content')
         if result:
            return result[0]
-    elif "dmm.co.jp" in real_url:
+    elif "dmm.co.jp" in detail_url:
         result = html.xpath('//a[@id="sample-image1"]/img/@src')
         if result:
             # 替换域名并返回第一个匹配项
@@ -112,25 +110,25 @@ def get_cover(html, real_url):
     return ''  # 无匹配时返回空字符串
 
 
-def get_poster(html, cover, real_url):
+def get_poster(html, cover, detail_url):
     result = html.xpath('//meta[@property="og:image"]/@content')
-    if result and "dmm.co.jp/digital" in real_url:
+    if result and "dmm.co.jp/digital" in detail_url:
         result = re.sub(r"pics.dmm.co.jp", r"awsimgsrc.dmm.co.jp/pics_dig", result[0])
         return result
     else:
         return cover.replace("pl.jpg", "ps.jpg")
 
 
-def get_extrafanart(html, real_url):
+def get_extrafanart(html, detail_url):
     result = []
-    if "mono/dvd" in real_url:
+    if "mono/dvd" in detail_url:
         result_list = html.xpath("//a[@name='sample-image']/img/@data-lazy")
         i = 1
         for each in result_list:
             each = each.replace("-%s.jpg" % i, "jp-%s.jpg" % i)
             result.append(each)
             i += 1
-    elif "dmm.co.jp" in real_url:
+    elif "dmm.co.jp" in detail_url:
         result_list = html.xpath("//div[@id='sample-image-block']/a/img/@src")
         if not result_list:
             result_list = html.xpath("//a[@name='sample-image']/img/@src")
@@ -148,18 +146,53 @@ def get_director(html):
         result = html.xpath("//th[contains(text(),'監督')]/following-sibling::td/a/text()")
     return result[0] if result else ""
 
+def remove_content(input_string):
+    # 定义关键词列表，支持普通字符串和正则表达式模式
+    keywords = [
+        r"---+",
+        "『制作·著作",
+        "【※", 
+        "【エスワン20周年",
+        "＃班長P",
+        "初回無料体験ポ",
+        "＃班長P",
+        r"★.*★",
+        "※ 配信",
+        "※こちらは",
+        "特集"
+    ]
+    
+    # 遍历关键词列表，按优先级逐一匹配
+    for keyword in keywords:
+        # 判断是否是正则表达式模式
+        if isinstance(keyword, str) and (keyword.startswith(r"---+") or keyword.startswith(r"★.*★")):
+            # 如果是正则表达式模式，直接编译
+            pattern = re.compile(keyword)
+        else:
+            # 如果是普通字符串，使用 re.escape 转义后编译
+            pattern = re.compile(re.escape(keyword))
+        
+        # 查找匹配
+        match = pattern.search(input_string)
+        if match:
+            # print(f"Found match: {keyword}")
+            # 如果找到匹配，截取到匹配点之前的部分并返回
+            return input_string[:match.start()].strip()
+    
+    # 如果没有找到任何关键词，则返回原始字符串
+    return input_string.strip()
 
-def get_outline(html, real_url):
+
+def get_outline(html, detail_url):
     result = ""
-    if "mono/dvd" in real_url:
+    if "mono/dvd" in detail_url:
         result = html.xpath("normalize-space(string(//div[@class='mg-b20 lh4']/p[@class='mg-b20']))")
-        return result if result else ""
-    elif "dmm.co.jp" in real_url:
+        result = remove_content(result)
+    elif "dmm.co.jp" in detail_url:
         result = html.xpath(
             "normalize-space(string(//div[@class='wp-smplex']/preceding-sibling::div[contains(@class, 'mg-b20')][1]))"
         )
-        result = result.split("※ 配信方法")[0]
-        return result.replace("「コンビニ受取」対象商品です。詳しくはこちらをご覧ください。", "").strip()
+        result = remove_content(result)
     return result
 
 
@@ -168,9 +201,9 @@ def get_score(html):
     return result[0].replace("\\n", "").replace("\n", "").replace("点", "") if result else ""
 
 
-def get_trailer(htmlcode, real_url):
+def get_trailer(htmlcode, detail_url):
     trailer_url = ""
-    normal_cid = re.findall(r'cid=(.*?)/', real_url)[0]
+    normal_cid = re.findall(r'cid=(.*?)/', detail_url)[0]
     vr_cid = re.findall(r"https://www.dmm.co.jp/digital/-/vr-sample-player/=/cid=([^/]+)", htmlcode)
     if vr_cid:
         cid = vr_cid[0]
@@ -178,7 +211,7 @@ def get_trailer(htmlcode, real_url):
         trailer_url = check_url(temp_url)
     elif normal_cid:
         cid = normal_cid
-        if "dmm.co.jp" in real_url:
+        if "dmm.co.jp" in detail_url:
             url = (
                 "https://www.dmm.co.jp/service/digitalapi/-/html5_player/=/cid=%s/mtype=AhRVShI_/service=digital/floor=videoa/mode=/"
                 % cid
@@ -199,312 +232,62 @@ def get_trailer(htmlcode, real_url):
             trailer_url = ""
     return trailer_url
 
-
-def get_real_url(url, number, number2, file_path, cookies=None):
-    """
-    使用 Playwright 获取目标页面的 HTML，并提取符合条件的目标 URL。
-
-    参数:
-        url (str): 目标页面的 URL。
-        number (str): 视频编号（原始格式）。
-        number2 (str): 视频编号（处理后格式）。
-        file_path (str): 文件路径或文件名，用于辅助判断。
-        cookies (list of dict): 需要添加的 Cookie 列表，格式为 [{"name": "key", "value": "value", ...}]。
-
-    返回:
-        tuple: (real_url, number)，real_url 为目标页面 URL，number 为修正后的视频编号。
-    """
-    cookies = [
-    {"name": "uid", "value": "abcd786561031111", "domain": ".dmm.co.jp", "path": "/"},
-    {"name": "age_check_done", "value": "1", "domain": ".dmm.co.jp", "path": "/"}
-    ]
-
-    # 将 number2 转换为小写并去掉 "-"
+def get_detail_url(url_list, number, number2, file_path):
     number_temp = number2.lower().replace("-", "")
+    # https://tv.dmm.co.jp/list/?content=mide00726&i3_ref=search&i3_ord=1
+    # https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mide00726/?i3_ref=search&i3_ord=2
+    # https://www.dmm.com/mono/dvd/-/detail/=/cid=n_709mmrak089sp/?i3_ref=search&i3_ord=1
+    # /cid=snis00900/
+    # /cid=snis126/ /cid=snis900/ 图上面没有蓝光水印
+    # /cid=h_346rebdb00017/
+    # /cid=6snis027/ /cid=7snis900/
     number1 = number_temp.replace("000", "")
-
-    # 定义正则表达式
     number_pre = re.compile(f"(?<=[=0-9]){number_temp[:3]}")
     number_end = re.compile(f"{number_temp[-3:]}(?=(-[0-9])|([a-z]*)?[/&])")
     number_mid = re.compile(f"[^a-z]{number1}[^0-9]")
+    temp_list = []
+    for each in url_list:
+        if (number_pre.search(each) and number_end.search(each)) or number_mid.search(each):
+            cid_list = re.findall(r"(cid|content)=([^/&]+)", each)
+            if cid_list:
+                temp_list.append(each)
+                cid = cid_list[0][1]
+                if "-" in cid:  # 134cwx001-1
+                    if cid[-2:] in file_path:
+                        number = cid
 
-    with sync_playwright() as p:
-        # 启动浏览器（启用 headless 模式）
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
-            ignore_https_errors=True
-        )
+    # 网址排序：digital(数据完整)  >  dvd(无前缀数字，图片完整)   >   prime（有发行日期）   >   premium（无发行日期）  >  s1（无发行日期）
+    tv_list = []
+    digital_list = []
+    dvd_list = []
+    prime_list = []
+    monthly_list = []
+    other_list = []
+    for i in temp_list:
+        if "tv.dmm.co.jp" in i:
+            tv_list.append(i)
+        elif "/digital/" in i:
+            digital_list.append(i)
+        elif "/dvd/" in i:
+            dvd_list.append(i)
+        elif "/prime/" in i:
+            prime_list.append(i)
+        elif "/monthly/" in i:
+            monthly_list.append(i)
+        else:
+            other_list.append(i)
+    dvd_list.sort(reverse=True)
+    # 丢弃 tv_list, 因为获取其信息调用的后续 api 无法访问
+    detail_url_list = digital_list + dvd_list + prime_list + monthly_list + other_list
+    return detail_url_list, number
 
-        # 如果提供了 Cookie，则添加到上下文中
-        if cookies:
-            context.add_cookies(cookies)
-
-        # 创建一个新页面
-        page = context.new_page()
-
-        # 打开目标页面
-        page.goto(url, wait_until="networkidle")
-
-        # 触发懒加载（如果需要）
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-
-        # 提取页面 HTML 内容
-        html_content = page.content()
-
-        # 关闭浏览器
-        browser.close()
-
-        # 将 HTML 加载到 lxml.etree 以使用 XPath
-        from lxml import etree
-        html = etree.HTML(html_content)
-
-        # 修改 XPath：提取所有链接
-        url_list = html.xpath("//div[@class='flex py-1.5 pl-3']/a/@href")
-
-        temp_list = []
-        for each in url_list:
-            if (number_pre.search(each) and number_end.search(each)) or number_mid.search(each):
-                cid_list = re.findall(r"(cid|content)=([^/&]+)", each)
-                if cid_list:
-                    temp_list.append(each)
-                    cid = cid_list[0][1]
-                    if "-" in cid:  # 134cwx001-1
-                        if cid[-2:] in file_path:
-                            number = cid
-
-        if not temp_list:  # 通过标题搜索
-            title_list = html.xpath("//p[@class='txt']/a//text()")
-            if title_list and url_list:
-                full_title = number
-                for i in range(len(url_list)):
-                    temp_title = title_list[i].replace("...", "").strip()
-                    if temp_title in full_title:
-                        temp_url = url_list[i]
-                        temp_list.append(temp_url)
-                        cid = re.findall(r"(cid|content)=.*?([a-z]{3,})0*(\d{3,}[a-z]*)", temp_url)
-                        if cid:
-                            number = (cid[0][1] + "-" + cid[0][2]).upper()
-
-        # 网址排序：digital(数据完整) > dvd(无前缀数字，图片完整) > prime（有发行日期） > premium（无发行日期） > s1（无发行日期）
-        tv_list = []
-        digital_list = []
-        dvd_list = []
-        prime_list = []
-        monthly_list = []
-        other_list = []
-        for i in temp_list:
-            if "tv.dmm.co.jp" in i:
-                tv_list.append(i)
-            elif "/digital/" in i:
-                digital_list.append(i)
-            elif "/dvd/" in i:
-                dvd_list.append(i)
-            elif "/prime/" in i:
-                prime_list.append(i)
-            elif "/monthly/" in i:
-                monthly_list.append(i)
-            else:
-                other_list.append(i)
-        dvd_list.sort(reverse=True)
-        # 丢弃 tv_list, 因为获取其信息调用的后续 API 无法访问
-        new_url_list = digital_list + dvd_list + prime_list + monthly_list + other_list
-        real_url = new_url_list[0] if new_url_list else ""
-        return real_url, number
-
-
-
-# invalid API
-def get_tv_jp_data(real_url):
-    cid = re.findall(r"content=([^&/]+)", real_url)[0]
-    headers = {
-        "Content-Type": "application/json",
-        "content-length": "3174",
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-    }
-    data = {
-        "operationName": "GetFanzaTvContentDetail",
-        "variables": {"id": cid, "device": "BROWSER", "playDevice": "BROWSER", "isLoggedIn": False},
-        "query": "query GetFanzaTvContentDetail($id: ID!, $device: Device!, $isLoggedIn: Boolean!, $playDevice: PlayDevice!) {\n  fanzaTV(device: $device) {\n    content(id: $id) {\n      __typename\n      id\n      contentType\n      shopName\n      shopOption\n      shopType\n      title\n      description\n      packageImage\n      packageLargeImage\n      noIndex\n      ppvShopName\n      viewingRights(device: $playDevice) @include(if: $isLoggedIn) {\n        isStreamable\n        __typename\n      }\n      startDeliveryAt\n      endDeliveryAt\n      isBeingDelivered\n      hasBookmark @include(if: $isLoggedIn)\n      sampleMovie {\n        url\n        thumbnail\n        __typename\n      }\n      samplePictures {\n        image\n        imageLarge\n        __typename\n      }\n      actresses {\n        id\n        name\n        __typename\n      }\n      histrions {\n        id\n        name\n        __typename\n      }\n      directors {\n        id\n        name\n        __typename\n      }\n      series {\n        id\n        name\n        __typename\n      }\n      maker {\n        id\n        name\n        __typename\n      }\n      label {\n        id\n        name\n        __typename\n      }\n      genres {\n        id\n        name\n        __typename\n      }\n      playInfo(withResume: $isLoggedIn, device: $device) {\n        parts {\n          contentId\n          number\n          duration\n          resumePoint\n          __typename\n        }\n        resumePartNumber\n        highestQualityName\n        duration\n        __typename\n      }\n      reviewSummary {\n        averagePoint\n        reviewerCount\n        reviewCommentCount\n        __typename\n      }\n      reviews(first: 5) {\n        edges {\n          node {\n            id\n            reviewerName\n            reviewerId\n            title\n            point\n            hasSpoiler\n            comment\n            date\n            postEvaluationCount\n            helpfulVoteCount\n            isReviewerPurchased\n            __typename\n          }\n          __typename\n        }\n        pageInfo {\n          endCursor\n          hasNextPage\n          __typename\n        }\n        total\n        __typename\n      }\n      fanzaTvRecommendations: itemBasedRecommendations(\n        device: $device\n        shop: FANZA_TV\n        limit: 30\n      ) {\n        id\n        title\n        packageImage\n        averageReviewPoint\n        price\n        salePrice\n        __typename\n      }\n      fanzaPpvRecommendations: itemBasedRecommendations(\n        device: $device\n        shop: VIDEO\n        limit: 30\n      ) {\n        id\n        title\n        packageImage\n        averageReviewPoint\n        price\n        salePrice\n        __typename\n      }\n    }\n    userBasedRecommendations(place: DETAIL_PAGE, limit: 30) @include(if: $isLoggedIn) {\n      id\n      title\n      packageImage\n      averageReviewPoint\n      price\n      salePrice\n      __typename\n    }\n    __typename\n  }\n}\n",
-    }
-
-    result, response = post_html(
-        "https://api.tv.dmm.co.jp/graphql", headers=headers, json=data, json_data=True, keep=False
-    )
-    if result and response.get("data"):
-        api_data = response["data"]["fanzaTV"]["content"]
-        title = api_data["title"]
-        outline = api_data["description"]
-        actor_list = []
-        for each in api_data["actresses"]:
-            actor_list.append(each["name"])
-        actor = ",".join(actor_list)
-        poster_url = api_data["packageImage"]
-        cover_url = api_data["packageLargeImage"]
-        tag_list = []
-        for each in api_data["genres"]:
-            tag_list.append(each["name"])
-        tag = ",".join(tag_list)
-        # release = api_data['title']
-        # year = api_data['title']
-        try:
-            runtime = str(int(api_data["playInfo"]["duration"] / 60))
-        except:
-            runtime = ""
-        try:
-            score = api_data["reviewSummary"]["averagePoint"]
-        except:
-            score = ""
-        try:
-            series = api_data["series"]["name"]
-        except:
-            series = ""
-        try:
-            director = api_data["directors"][0]["name"]
-        except:
-            director = ""
-        try:
-            studio = api_data["maker"]["name"]
-        except:
-            studio = ""
-        try:
-            publisher = api_data["label"][0]["name"]
-        except:
-            publisher = ""
-        extrafanart = []
-        for each in api_data["samplePictures"]:
-            if each["imageLarge"]:
-                extrafanart.append(each["imageLarge"])
-        try:
-            trailer_url = api_data["sampleMovie"]["url"].replace("hlsvideo", "litevideo")
-            cid = re.findall(r"([^/]+)/playlist.m3u8", trailer_url)[0]
-            trailer = trailer_url.replace("playlist.m3u8", cid + "_sm_w.mp4")
-            trailer = get_dmm_trailer(trailer)
-
-        except:
-            trailer = ""
-        return (
-            True,
-            title,
-            outline,
-            actor,
-            poster_url,
-            cover_url,
-            tag,
-            runtime,
-            score,
-            series,
-            director,
-            studio,
-            publisher,
-            extrafanart,
-            trailer,
-            "",
-        )
-    else:
-        return False, "未找到数据", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
-
-
-def get_tv_com_data(number):
-    headers = {
-        "Content-Type": "application/json",
-        "content-length": "10501",
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
-    }
-    data = {
-        "operationName": "GetVideo",
-        "variables": {
-            "seasonId": number,
-            "contentId": "",
-            "device": "BROWSER",
-            "playDevice": "BROWSER",
-            "isLoggedIn": False,
-            "isContentId": False,
-        },
-        "query": "query GetVideo($seasonId: ID!, $contentId: ID!, $device: Device!, $playDevice: PlayDevice!, $isLoggedIn: Boolean!, $isContentId: Boolean!) {\n  video(id: $seasonId) {\n    id\n    seasonType\n    hasBookmark @include(if: $isLoggedIn)\n    titleName\n    seasonName\n    highlight(format: HTML)\n    description(format: HTML)\n    notices(format: HTML)\n    packageImage\n    productionYear\n    isNewArrival\n    isPublic\n    isExclusive\n    isBeingDelivered\n    viewingTypes\n    campaign {\n      name\n      endAt\n      __typename\n    }\n    rating {\n      category\n      __typename\n    }\n    casts {\n      castName\n      actorName\n      person {\n        id\n        __typename\n      }\n      __typename\n    }\n    staffs {\n      roleName\n      staffName\n      person {\n        id\n        __typename\n      }\n      __typename\n    }\n    categories {\n      name\n      id\n      __typename\n    }\n    genres {\n      name\n      id\n      __typename\n    }\n    copyright\n    relatedItems(device: $device) {\n      videos {\n        seasonId\n        video {\n          id\n          titleName\n          packageImage\n          isNewArrival\n          isExclusive\n          __typename\n        }\n        __typename\n      }\n      books {\n        seriesId\n        title\n        thumbnail\n        url\n        __typename\n      }\n      mono {\n        banner\n        url\n        __typename\n      }\n      scratch {\n        banner\n        url\n        __typename\n      }\n      onlineCrane {\n        banner\n        url\n        __typename\n      }\n      __typename\n    }\n    ... on VideoSeason {\n      ...CommonVideoSeason\n      __typename\n    }\n    ... on VideoLegacySeason {\n      ...CommonVideoLegacySeason\n      __typename\n    }\n    ... on VideoStageSeason {\n      ...CommonVideoStageSeason\n      __typename\n    }\n    ... on VideoSpotLiveSeason {\n      ...CommonVideoSpotLiveSeason\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment CommonVideoSeason on VideoSeason {\n  __typename\n  metaDescription: description(format: PLAIN)\n  keyVisualImage\n  keyVisualWithoutLogoImage\n  reviewSummary {\n    averagePoint\n    reviewerCount\n    reviewCommentCount\n    __typename\n  }\n  relatedSeasons {\n    id\n    title\n    __typename\n  }\n  upcomingEpisode {\n    svodProduct {\n      startDeliveryAt\n      __typename\n    }\n    __typename\n  }\n  continueWatching @include(if: $isLoggedIn) {\n    resumePoint\n    contentId\n    content {\n      episodeImage\n      episodeTitle\n      episodeNumber\n      episodeNumberName\n      viewingRights(device: $playDevice) {\n        isStreamable\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  priceSummary {\n    lowestPrice\n    discountedLowestPrice\n    __typename\n  }\n  episode(id: $contentId) @include(if: $isContentId) {\n    id\n    episodeTitle\n    episodeImage\n    episodeNumber\n    episodeNumberName\n    episodeDetail\n    playInfo {\n      highestQuality\n      isSupportHDR\n      highestAudioChannelLayout\n      duration\n      audioRenditions\n      textRenditions\n      __typename\n    }\n    viewingRights(device: $playDevice) {\n      isDownloadable\n      isStreamable\n      __typename\n    }\n    ppvExpiration @include(if: $isLoggedIn) {\n      expirationType\n      viewingExpiration\n      viewingStartExpiration\n      startDeliveryAt\n      __typename\n    }\n    freeProduct {\n      contentId\n      __typename\n    }\n    ppvProducts {\n      ...VideoPPVProductTag\n      __typename\n    }\n    svodProduct {\n      startDeliveryAt\n      __typename\n    }\n    __typename\n  }\n  episodes(type: MAIN, first: 1) {\n    edges {\n      node {\n        id\n        sampleMovie\n        episodeTitle\n        episodeNumber\n        episodeNumberName\n        playInfo {\n          highestQuality\n          isSupportHDR\n          highestAudioChannelLayout\n          duration\n          audioRenditions\n          textRenditions\n          __typename\n        }\n        viewingRights(device: $playDevice) {\n          isDownloadable\n          isStreamable\n          downloadableFiles @include(if: $isLoggedIn) {\n            quality {\n              name\n              displayName\n              displayPriority\n              __typename\n            }\n            totalFileSize\n            parts {\n              partNumber\n              fileSize\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        ppvExpiration @include(if: $isLoggedIn) {\n          expirationType\n          viewingExpiration\n          viewingStartExpiration\n          startDeliveryAt\n          __typename\n        }\n        freeProduct {\n          contentId\n          __typename\n        }\n        ppvProducts {\n          ...VideoPPVProductTag\n          __typename\n        }\n        svodProduct {\n          startDeliveryAt\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    total\n    __typename\n  }\n  purchasedContents(first: 1) @include(if: $isLoggedIn) {\n    edges {\n      node {\n        id\n        __typename\n      }\n      __typename\n    }\n    total\n    __typename\n  }\n  specialEpisode: episodes(type: SPECIAL, first: 1) {\n    total\n    __typename\n  }\n  pvEpisode: episodes(type: PV, first: 1) {\n    edges {\n      node {\n        id\n        sampleMovie\n        playInfo {\n          duration\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    total\n    __typename\n  }\n}\n\nfragment VideoPPVProductTag on VideoPPVProduct {\n  id\n  isOnSale\n  isBeingDelivered\n  isPurchased @include(if: $isLoggedIn)\n  price {\n    price\n    salePrice\n    __typename\n  }\n  __typename\n}\n\nfragment CommonVideoLegacySeason on VideoLegacySeason {\n  __typename\n  metaDescription: description(format: PLAIN)\n  packageLargeImage\n  reviewSummary {\n    averagePoint\n    reviewerCount\n    reviewCommentCount\n    __typename\n  }\n  sampleMovie {\n    url\n    thumbnail\n    __typename\n  }\n  samplePictures {\n    image\n    imageLarge\n    __typename\n  }\n  sampleMovie {\n    url\n    thumbnail\n    __typename\n  }\n  reviewSummary {\n    averagePoint\n    __typename\n  }\n  priceSummary {\n    lowestPrice\n    discountedLowestPrice\n    __typename\n  }\n  continueWatching @include(if: $isLoggedIn) {\n    partNumber\n    resumePoint\n    contentId\n    content {\n      playInfo {\n        parts {\n          contentId\n          __typename\n        }\n        __typename\n      }\n      viewingRights(device: $playDevice) {\n        isStreamable\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  content {\n    id\n    contentType\n    viewingRights(device: $playDevice) {\n      isStreamable\n      isDownloadable\n      downloadableFiles @include(if: $isLoggedIn) {\n        quality {\n          name\n          displayName\n          displayPriority\n          __typename\n        }\n        totalFileSize\n        parts {\n          partNumber\n          fileSize\n          __typename\n        }\n        __typename\n      }\n      windowsURLSchemes: appURLSchemes(app: WINDOWS_VR) @include(if: $isLoggedIn) {\n        partNumber\n        url\n        __typename\n      }\n      iosURLSchemes: appURLSchemes(app: IOS_VR) @include(if: $isLoggedIn) {\n        partNumber\n        url\n        __typename\n      }\n      androidURLSchemes: appURLSchemes(app: ANDROID_VR) @include(if: $isLoggedIn) {\n        partNumber\n        url\n        __typename\n      }\n      __typename\n    }\n    playInfo {\n      duration\n      audioRenditions\n      textRenditions\n      highestQuality\n      isSupportHDR\n      highestAudioChannelLayout\n      parts {\n        contentId\n        number\n        __typename\n      }\n      __typename\n    }\n    ppvExpiration @include(if: $isLoggedIn) {\n      expirationType\n      viewingExpiration\n      viewingStartExpiration\n      startDeliveryAt\n      __typename\n    }\n    freeProduct {\n      contentId\n      __typename\n    }\n    ppvProducts {\n      ...VideoPPVProductTag\n      __typename\n    }\n    svodProduct {\n      startDeliveryAt\n      __typename\n    }\n    __typename\n  }\n  series {\n    id\n    name\n    __typename\n  }\n}\n\nfragment CommonVideoStageSeason on VideoStageSeason {\n  __typename\n  metaDescription: description(format: PLAIN)\n  keyVisualImage\n  keyVisualWithoutLogoImage\n  reviewSummary {\n    averagePoint\n    reviewerCount\n    reviewCommentCount\n    __typename\n  }\n  priceSummary {\n    lowestPrice\n    discountedLowestPrice\n    __typename\n  }\n  allPerformances {\n    performanceDate\n    contents {\n      id\n      episodeTitle\n      priority\n      startLivePerformanceAt\n      ppvProducts {\n        ...VideoPPVProductTag\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  purchasedContents(first: 1) @include(if: $isLoggedIn) {\n    edges {\n      node {\n        id\n        __typename\n      }\n      __typename\n    }\n    total\n    __typename\n  }\n}\n\nfragment CommonVideoSpotLiveSeason on VideoSpotLiveSeason {\n  __typename\n  metaDescription: description(format: PLAIN)\n  keyVisualImage\n  keyVisualWithoutLogoImage\n  episodes(type: MAIN, first: 1) {\n    edges {\n      node {\n        id\n        episodeTitle\n        episodeNumber\n        episodeNumberName\n        viewingRights(device: $playDevice) {\n          isStreamable\n          __typename\n        }\n        ppvExpiration @include(if: $isLoggedIn) {\n          expirationType\n          viewingExpiration\n          viewingStartExpiration\n          startDeliveryAt\n          __typename\n        }\n        freeProduct {\n          contentId\n          __typename\n        }\n        ppvProducts {\n          ...VideoPPVProductTag\n          __typename\n        }\n        svodProduct {\n          startDeliveryAt\n          __typename\n        }\n        playInfo {\n          audioRenditions\n          textRenditions\n          duration\n          highestQuality\n          isSupportHDR\n          highestAudioChannelLayout\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n",
-    }
-
-    result, response = post_html(
-        "https://api.tv.dmm.com/graphql", headers=headers, json=data, json_data=True, keep=False
-    )
-    if result and response.get("data"):
-        api_data = response["data"]["video"]
-        title = api_data["titleName"]
-        outline = api_data["description"]
-        actor_list = []
-        for each in api_data["casts"]:
-            actor_list.append(each["actorName"])
-        actor = ",".join(actor_list)
-        poster_url = api_data["packageImage"]
-        cover_url = api_data["packageLargeImage"]
-        tag_list = []
-        for each in api_data["genres"]:
-            tag_list.append(each["name"])
-        tag = ",".join(tag_list)
-        # release = api_data['title']
-        year = str(api_data["productionYear"])
-        try:
-            runtime = str(int(api_data["playInfo"]["duration"] / 60))
-        except:
-            runtime = ""
-        try:
-            score = str(api_data["reviewSummary"]["averagePoint"])
-        except:
-            score = ""
-        try:
-            series = api_data["series"]["name"]
-        except:
-            series = ""
-        try:
-            director = api_data["directors"][0]["name"]
-        except:
-            director = ""
-        try:
-            studio = api_data["staffs"][0]["staffName"]
-        except:
-            studio = ""
-        publisher = studio
-        extrafanart = []
-        for each in api_data["samplePictures"]:
-            if each["imageLarge"]:
-                extrafanart.append(each["imageLarge"])
-        try:
-            trailer_url = api_data["sampleMovie"]["url"].replace("hlsvideo", "litevideo")
-            cid = re.findall(r"([^/]+)/playlist.m3u8", trailer_url)[0]
-            trailer = trailer_url.replace("playlist.m3u8", cid + "_sm_w.mp4")
-            trailer = get_dmm_trailer(trailer)
-
-        except:
-            trailer = ""
-        return (
-            True,
-            title,
-            outline,
-            actor,
-            poster_url,
-            cover_url,
-            tag,
-            runtime,
-            score,
-            series,
-            director,
-            studio,
-            publisher,
-            extrafanart,
-            trailer,
-            year,
-        )
-    else:
-        return False, "未找到数据", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
-
-
-def main(number, appoint_url="", log_info="", req_web="", language="jp", file_path=""):
+def main(number, specified_url="", log_info="", req_web="", language="jp", file_path=""):
     start_time = time.time()
     website_name = "dmm"
     req_web += "-> %s" % website_name
     cookies = {"cookie": "uid=abcd786561031111; age_check_done=1;"}
-    real_url = appoint_url
+    css_selector = "div[class='flex py-1.5 pl-3'] > a"
+    # price_selector = "span.font-bold.text-lg"
     title = ""
     cover_url = ""
     poster_url = ""
@@ -514,198 +297,151 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
     image_download = False
     image_cut = "right"
     dic = {}
-    digital = re.findall(r"[A-Za-z]+-?(\d+)", number)
-    if digital and len(digital[0]) >= 5 and digital[0].startswith("00"):
-        number = number.replace(digital[0], digital[0][2:])
-    number_00 = number.lower().replace("-", "00")  # 搜索结果多，但snis-027没结果
+    digits = ""
+    if x := re.findall(r"[A-Za-z]+-?(\d+)", number):
+        digits = x[0]
+        if len(digits) >= 5:
+            if digits.startswith("00"):
+                number = number.replace(digits, digits[2:])
+    number_00 = number.lower().replace(digits, digits.zfill(5)).replace("-", "")  # 数字不足5位则在起始位补0, 搜索结果多，但snis-027没结果
     number_no_00 = number.lower().replace("-", "")  # 搜索结果少
     web_info = "\n       "
     log_info += " \n    🌐 dmm"
     debug_info = ""
 
-    if not appoint_url:
-        real_url = "https://www.dmm.co.jp/search/=/searchstr=%s/sort=ranking/" % number_00  # 带00
-        debug_info = "搜索地址: %s " % real_url
+    if not specified_url:
+        search_url = "https://www.dmm.co.jp/search/=/searchstr=%s/sort=ranking/" % number_00  # 带00
+        debug_info = "搜索地址: %s " % search_url
         log_info += web_info + debug_info
     else:
-        debug_info = "番号地址: %s " % real_url
+        debug_info = "番号地址: %s " % specified_url
         log_info += web_info + debug_info
 
     try:
-        # tv.dmm未屏蔽非日本ip，此处请求页面，看是否可以访问
-        if "tv.dmm." not in real_url:
-            result, htmlcode = get_html(real_url, cookies=cookies)
-            if not result:  # 请求失败
-                debug_info = "网络请求错误: %s " % htmlcode
+        if "tv.dmm." not in search_url:
+            page_url, url_list = get_url_playwright(search_url, cookies=cookies, css_selector=css_selector)
+            # print(f"page_url: {page_url}, url_list: {url_list}")
+            if not page_url:  # 请求失败
+                debug_info = "网络请求错误: %s " % search_url
                 log_info += web_info + debug_info
                 raise Exception(debug_info)
 
-            if re.findall("foreignError", htmlcode):  # 非日本地区限制访问
+            if re.findall("age_check", page_url):
+                debug_info = "年龄限制, 请确认cookie 有效！"
+                log_info += web_info + debug_info
+                raise Exception(debug_info)
+            
+            if re.findall("not-available-in-your-region", page_url):  # 非日本地区限制访问
                 debug_info = "地域限制, 请使用日本节点访问！"
                 log_info += web_info + debug_info
                 raise Exception(debug_info)
 
-            html = etree.fromstring(htmlcode, etree.HTMLParser())
+            # html = etree.fromstring(htmlcode, etree.HTMLParser())
 
             # 未指定详情页地址时，获取详情页地址（刚才请求的是搜索页）
-            if not appoint_url:
-                real_url, number = get_real_url(real_url, number, number, file_path)
-                if not real_url:
+            if not specified_url:
+                detail_url_list, number = get_detail_url(url_list, number, number, file_path)
+                if not detail_url_list:
                     debug_info = "搜索结果: 未匹配到番号！"
                     log_info += web_info + debug_info
                     if number_no_00 != number_00:
-                        real_url = (
+                        search_url = (
                             "https://www.dmm.co.jp/search/=/searchstr=%s/sort=ranking/" % number_no_00
                         )  # 不带00，旧作 snis-027
-                        debug_info = "再次搜索地址: %s " % real_url
+                        debug_info = "再次搜索地址: %s " % search_url
                         log_info += web_info + debug_info
-                        result, htmlcode = get_html(real_url, cookies=cookies)
-                        if not result:  # 请求失败
-                            debug_info = "网络请求错误: %s " % htmlcode
+                        page_url, url_list = get_url_playwright(search_url, cookies=cookies, css_selector=css_selector)
+                        if not page_url:  # 请求失败
+                            debug_info = "网络请求错误: %s " % search_url
                             log_info += web_info + debug_info
                             raise Exception(debug_info)
-                        html = etree.fromstring(htmlcode, etree.HTMLParser())
-                        real_url, number = get_real_url(real_url, number, number_no_00, file_path)
-                        if not real_url:
+                        # html = etree.fromstring(htmlcode, etree.HTMLParser())
+                        detail_url_list, number = get_detail_url(url_list, number, number_no_00, file_path)
+                        if not detail_url_list:
                             debug_info = "搜索结果: 未匹配到番号！"
                             log_info += web_info + debug_info
 
-                # 写真
-                if not real_url:
-                    real_url = "https://www.dmm.com/search/=/searchstr=%s/sort=ranking/" % number_no_00
-                    debug_info = "再次搜索地址: %s " % real_url
+                if not detail_url_list:
+                    # 写真
+                    search_url = "https://www.dmm.com/search/=/searchstr=%s/sort=ranking/" % number_no_00
+                    debug_info = "再次搜索地址: %s " % search_url
                     log_info += web_info + debug_info
-                    result, htmlcode = get_html(real_url, cookies=cookies)
-                    if not result:  # 请求失败
-                        debug_info = "网络请求错误: %s " % htmlcode
+                    page_url, url_list = get_url_playwright(search_url, cookies=cookies, css_selector=css_selector)
+                    if not page_url:  # 请求失败
+                        debug_info = "网络请求错误: %s " % search_url
                         log_info += web_info + debug_info
                         raise Exception(debug_info)
-                    html = etree.fromstring(htmlcode, etree.HTMLParser())
-                    real_url, number0 = get_real_url(real_url, number, number_no_00, file_path)
-                    if not real_url:
+                    # html = etree.fromstring(htmlcode, etree.HTMLParser())
+                    detail_url_list, number0 = get_detail_url(url_list, number, number_no_00, file_path)
+                    if not detail_url_list:
                         debug_info = "搜索结果: 未匹配到番号！"
                         log_info += web_info + debug_info
 
-                elif real_url.find("?i3_ref=search&i3_ord") != -1:  # 去除url中无用的后缀
-                    real_url = real_url[: real_url.find("?i3_ref=search&i3_ord")]
-
-                debug_info = "番号地址: %s " % real_url
-                log_info += web_info + debug_info
+                else:
+                    detail_url_list = [re.sub(r"\?.*", "", detail_url) for detail_url in detail_url_list]
 
         # 获取详情页信息
-        if not real_url or "tv.dmm.com" in real_url:
-            if not real_url:
-                if number_00.lower().startswith("lcvr"):
-                    number_00 = "5125" + number_00
-                elif number_no_00.lower().startswith("ionxt"):
-                    number_00 = "5125" + number_no_00
-                elif number_00.lower().startswith("ymd"):
-                    number_00 = "5394" + number_00
-                elif number_00.lower().startswith("fakwm"):
-                    number_00 = "5497" + number_00
-                elif number_00.lower().startswith("ftbd"):
-                    number_00 = "5533" + number_00
-                elif (
-                    number_00.lower().startswith("ugm")
-                    or number_00.lower().startswith("dmi")
-                    or number_00.lower().startswith("whm")
-                ):
-                    number_00 = "5083" + number_00
-                    number_00 = "5083" + number_00
-                real_url = f"https://tv.dmm.com/vod/detail/?season={number_00}"
-                debug_info = "再次搜索地址: %s " % real_url
-            else:
-                debug_info = "番号地址: %s " % real_url
-                number_00 = re.findall(r"season=([^&]+)", real_url)[0] if "season=" in real_url else number_00
-            log_info += web_info + debug_info
-            (
-                result,
-                title,
-                outline,
-                actor,
-                poster_url,
-                cover_url,
-                tag,
-                runtime,
-                score,
-                series,
-                director,
-                studio,
-                publisher,
-                extrafanart,
-                trailer,
-                year,
-            ) = get_tv_com_data(number_00)
-            if not result:
-                debug_info = "数据获取失败: %s " % title
-                log_info += web_info + debug_info
-                raise Exception(debug_info)
-        elif "tv.dmm.co.jp" in real_url:
-            (
-                result,
-                title,
-                outline,
-                actor,
-                poster_url,
-                cover_url,
-                tag,
-                runtime,
-                score,
-                series,
-                director,
-                studio,
-                publisher,
-                extrafanart,
-                trailer,
-                year,
-            ) = get_tv_jp_data(real_url)
-            if not result:
-                debug_info = "数据获取失败: %s " % title
-                log_info += web_info + debug_info
-                raise Exception(debug_info)
-        else:
-            result, htmlcode = get_html(real_url, cookies=cookies)
-            html = etree.fromstring(htmlcode, etree.HTMLParser())
-            if not result:
-                debug_info = "网络请求错误: %s " % htmlcode
-                log_info += web_info + debug_info
-                raise Exception(debug_info)
-
-            # 分析详情页
-            if "404 Not Found" in str(
-                html.xpath("//span[@class='d-txten']/text()")
-            ):  # 如果页面有404，表示传入的页面地址不对
-                debug_info = "404! 页面地址错误！"
-                log_info += web_info + debug_info
-                raise Exception(debug_info)
-
-            title = get_title(html).strip()  # 获取标题
-            if not title:
-                debug_info = "数据获取失败: 未获取到title！"
-                log_info += web_info + debug_info
-                raise Exception(debug_info)
+        for detail_url in detail_url_list:
             try:
-                actor = get_actor(html)  # 获取演员
-                cover_url = get_cover(html, real_url)  # 获取 cover
-                outline = get_outline(html, real_url)
-                tag = get_tag(html)
-                release = get_release(html)
-                year = get_year(release)
-                runtime = get_runtime(html)
-                score = get_score(html)
-                series = get_series(html)
-                director = get_director(html)
-                studio = get_studio(html)
-                publisher = get_publisher(html, studio)
-                extrafanart = get_extrafanart(html, real_url)
-                poster_url = get_poster(html, cover_url, real_url)
-                trailer = get_trailer(htmlcode, real_url)
-                mosaic = get_mosaic(html)
+                # 获取 HTML 内容
+                result, htmlcode = get_html(detail_url, cookies=cookies)
+                html = etree.fromstring(htmlcode, etree.HTMLParser())
+                # 检查网络请求是否成功
+                if not result:
+                    debug_info = "网络请求错误: %s " % htmlcode
+                    log_info += web_info + debug_info
+                    raise Exception(debug_info)
+                # 检查页面是否为 404
+                if "404 Not Found" in str(
+                    html.xpath("//span[@class='d-txten']/text()")
+                ):  # 如果页面有 404，表示传入的页面地址不对
+                    debug_info = "404! 页面地址错误！"
+                    log_info += web_info + debug_info
+                    raise Exception(debug_info)
+                # 获取标题并检查是否为空
+                title = get_title(html).strip()  # 获取标题
+                if not title:
+                    debug_info = "数据获取失败: 未获取到 title！"
+                    log_info += web_info + debug_info
+                    raise Exception(debug_info)
+                # 尝试解析详细信息
+                try:
+                    actor = get_actor(html)  # 获取演员
+                    cover_url = get_cover(html, detail_url)  # 获取 cover
+                    outline = get_outline(html, detail_url)
+                    tag = get_tag(html)
+                    release = get_release(html)
+                    year = get_year(release)
+                    runtime = get_runtime(html)
+                    score = get_score(html)
+                    series = get_series(html)
+                    director = get_director(html)
+                    studio = get_studio(html)
+                    publisher = get_publisher(html, studio)
+                    extrafanart = get_extrafanart(html, detail_url)
+                    poster_url = get_poster(html, cover_url, detail_url)
+                    trailer = get_trailer(htmlcode, detail_url)
+                    mosaic = get_mosaic(html)
+                    # 如果所有解析成功，结束循环
+                    debug_info = "番号地址: %s " % detail_url
+                    log_info += web_info + debug_info
+                    break
+                except Exception as e:
+                    # 捕获异常并记录日志
+                    debug_info = "出错: %s" % str(e)
+                    log_info += web_info + debug_info
+                    raise Exception(debug_info)
             except Exception as e:
-                # print(traceback.format_exc())
+                # 如果发生异常，打印日志并继续下一个 URL
                 debug_info = "出错: %s" % str(e)
                 log_info += web_info + debug_info
-                raise Exception(debug_info)
+                continue
+                
+        # 如果循环结束后仍未找到有效数据
+        if not title:
+            debug_info = "未找到有效数据: %s" % str(e)
+            log_info += web_info + debug_info
+            raise Exception(debug_info)
         actor_photo = get_actor_photo(actor)
         if "VR" in title:
             image_download = True
@@ -727,7 +463,7 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp", file_pa
                 "studio": studio,
                 "publisher": publisher,
                 "source": "dmm",
-                "website": real_url,
+                "website": detail_url,
                 "actor_photo": actor_photo,
                 "cover": cover_url,
                 "poster": poster_url,
@@ -839,4 +575,8 @@ if __name__ == "__main__":
     # print(main('FPRE113'))
     # print(main('ABF-164'))
     # print(main('ABF-203'))
+    # print(main('IPZZ-300'))
+    # print(main('HODV-21938'))
+    # print(main('HAVD-459'))
+    # print(main('PRBY-089'))
     pass

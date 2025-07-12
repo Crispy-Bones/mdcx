@@ -15,12 +15,12 @@ from models.base.file import copy_file, delete_file, move_file, split_path
 from models.base.image import check_pic, cut_thumb_to_poster
 from models.base.pool import Pool
 from models.base.utils import get_used_time
-from models.base.web import check_url, get_amazon_data, get_big_pic_by_google, get_html, get_imgsize, multi_download
+from models.base.web import check_url, get_big_pic_by_google, get_html, get_imgsize, multi_download
 from models.config.config import config
 from models.core.flags import Flags
-from models.core.utils import convert_half
 from models.signals import signal
 
+from models.crawlers.amazon import get_big_pic_by_amazon
 
 def get_actorname(number):
     # 获取真实演员名字
@@ -103,179 +103,6 @@ def _mutil_extrafanart_download_thread(task):
     else:
         json_data["logs"] += f"\n 💡 {extrafanart_name} download failed! ( {extrafanart_url} )"
         return False
-
-
-def get_big_pic_by_amazon(json_data, originaltitle_amazon, actor_amazon):
-    if not originaltitle_amazon or not actor_amazon:
-        return ""
-    hd_pic_url = ""
-    originaltitle_amazon = re.sub(r"【.*】", "", originaltitle_amazon)
-    originaltitle_amazon_list = [originaltitle_amazon]
-    for originaltitle_amazon in originaltitle_amazon_list:
-        # 需要两次urlencode，nb_sb_noss表示无推荐来源
-        url_search = (
-            "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=/s?k="
-            + urllib.parse.quote_plus(urllib.parse.quote_plus(originaltitle_amazon.replace("&", " ") + " [DVD]"))
-            + "&ref=nb_sb_noss"
-        )
-        result, html_search = get_amazon_data(url_search)
-
-        # 没有结果，尝试拆词，重新搜索
-        if (
-            "キーワードが正しく入力されていても一致する商品がない場合は、別の言葉をお試しください。" in html_search
-            and len(originaltitle_amazon_list) < 2
-        ):
-            for each_name in originaltitle_amazon.split(" "):
-                if each_name not in originaltitle_amazon_list:
-                    if (
-                        len(each_name) > 8
-                        or (not each_name.encode("utf-8").isalnum() and len(each_name) > 4)
-                        and each_name not in actor_amazon
-                    ):
-                        originaltitle_amazon_list.append(each_name)
-            continue
-
-        # 有结果时，检查结果
-        if result and html_search:
-            html = etree.fromstring(html_search, etree.HTMLParser())
-            originaltitle_amazon_half = convert_half(originaltitle_amazon)
-            originaltitle_amazon_half_no_actor = originaltitle_amazon_half
-
-            # 标题缩短匹配（如无结果，则使用缩小标题再次搜索）
-            if "検索に一致する商品はありませんでした。" in html_search and len(originaltitle_amazon_list) < 2:
-                short_originaltitle_amazon = html.xpath(
-                    '//div[@class="a-section a-spacing-base a-spacing-top-base"]/span[@class="a-size-base a-color-base"]/text()'
-                )
-                if short_originaltitle_amazon:
-                    short_originaltitle_amazon = short_originaltitle_amazon[0].upper().replace(" DVD", "")
-                    if short_originaltitle_amazon in originaltitle_amazon.upper():
-                        originaltitle_amazon_list.append(short_originaltitle_amazon)
-                        short_originaltitle_amazon = convert_half(short_originaltitle_amazon)
-                        if short_originaltitle_amazon in originaltitle_amazon_half:
-                            originaltitle_amazon_half = short_originaltitle_amazon
-                for each_name in originaltitle_amazon.split(" "):
-                    if each_name not in originaltitle_amazon_list:
-                        if (
-                            len(each_name) > 8
-                            or (not each_name.encode("utf-8").isalnum() and len(each_name) > 4)
-                            and each_name not in actor_amazon
-                        ):
-                            originaltitle_amazon_list.append(each_name)
-
-            # 标题不带演员名匹配
-            for each_actor in actor_amazon:
-                originaltitle_amazon_half_no_actor = originaltitle_amazon_half_no_actor.replace(each_actor.upper(), "")
-
-            # 检查搜索结果
-            actor_result_list = set()
-            title_result_list = []
-            # s-card-container s-overflow-hidden aok-relative puis-wide-grid-style puis-wide-grid-style-t2 puis-expand-height puis-include-content-margin puis s-latency-cf-section s-card-border
-            pic_card = html.xpath('//div[@class="a-section a-spacing-base"]')
-            for each in pic_card:  # tek-077
-                pic_ver_list = each.xpath(
-                    'div//a[@class="a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold"]/text()'
-                )
-                pic_title_list = each.xpath(
-                    'div//h2[@class="a-size-base-plus a-spacing-none a-color-base a-text-normal"]/span/text()'
-                )
-                pic_url_list = each.xpath('div//div[@class="a-section aok-relative s-image-square-aspect"]/img/@src')
-                detail_url_list = each.xpath('div//a[@class="a-link-normal s-no-outline"]/@href')
-                if len(pic_ver_list) and len(pic_url_list) and (len(pic_title_list) and len(detail_url_list)):
-                    pic_ver = pic_ver_list[0]  # 图片版本
-                    pic_title = pic_title_list[0]  # 图片标题
-                    pic_url = pic_url_list[0]  # 图片链接
-                    detail_url = detail_url_list[0]  # 详情页链接（有时带有演员名）
-                    if pic_ver in ["DVD", "Software Download"] and ".jpg" in pic_url:  # 无图时是.gif
-                        pic_title_half = convert_half(re.sub(r"【.*】", "", pic_title))
-                        pic_title_half_no_actor = pic_title_half
-                        for each_actor in actor_amazon:
-                            pic_title_half_no_actor = pic_title_half_no_actor.replace(each_actor, "")
-
-                        # 判断标题是否命中
-                        if (
-                            originaltitle_amazon_half[:15] in pic_title_half
-                            or originaltitle_amazon_half_no_actor[:15] in pic_title_half_no_actor
-                        ):
-                            detail_url = urllib.parse.unquote_plus(detail_url)
-                            temp_title = re.findall(r"(.+)keywords=", detail_url)
-                            temp_detail_url = (
-                                temp_title[0] + pic_title_half if temp_title else detail_url + pic_title_half
-                            )
-                            url = re.sub(r"\._[_]?AC_[^\.]+\.", ".", pic_url)
-
-                            # 判断演员是否在标题里，避免同名标题误匹配 MOPP-023
-                            for each_actor in actor_amazon:
-                                if each_actor in temp_detail_url:
-                                    actor_result_list.add(url)
-                                    if "写真付き" not in pic_title:  # NACR-206
-                                        w, h = get_imgsize(url)
-                                        if w > 600 or not w:
-                                            hd_pic_url = url
-                                            return hd_pic_url
-                                        else:
-                                            json_data["poster"] = pic_url  # 用于 Google 搜图
-                                            json_data["poster_from"] = "Amazon"
-                                    break
-                            else:
-                                title_result_list.append([url, "https://www.amazon.co.jp" + detail_url])
-
-            # 命中演员有多个结果时返回最大的（不等于1759/1758）
-            if len(actor_result_list):
-                pic_w = 0
-                for each in actor_result_list:
-                    new_pic_w = get_imgsize(each)[0]
-                    if new_pic_w > pic_w:
-                        if new_pic_w >= 1770 or (1750 > new_pic_w > 600):  # 不要小图 FCDSS-001，截短的图（1758/1759）
-                            pic_w = new_pic_w
-                            hd_pic_url = each
-                        else:
-                            json_data["poster"] = each  # 用于 Google 搜图
-                            json_data["poster_from"] = "Amazon"
-
-                if hd_pic_url:
-                    return hd_pic_url
-
-            # 当搜索结果命中了标题，没有命中演员时，尝试去详情页获取演员信息
-            elif (
-                len(title_result_list) <= 20
-                and "s-pagination-item s-pagination-next s-pagination-button s-pagination-separator" not in html_search
-            ):
-                for each in title_result_list[:4]:
-                    try:
-                        url_new = "https://www.amazon.co.jp" + re.findall(r"(/dp/[^/]+)", each[1])[0]
-                    except:
-                        url_new = each[1]
-                    result, html_detail = get_amazon_data(url_new)
-                    if result and html_detail:
-                        html = etree.fromstring(html_detail, etree.HTMLParser())
-                        detail_actor = str(html.xpath('//span[@class="author notFaded"]/a/text()')).replace(" ", "")
-                        detail_info_1 = str(
-                            html.xpath('//ul[@class="a-unordered-list a-vertical a-spacing-mini"]//text()')
-                        ).replace(" ", "")
-                        detail_info_2 = str(
-                            html.xpath('//div[@id="detailBulletsWrapper_feature_div"]//text()')
-                        ).replace(" ", "")
-                        detail_info_3 = str(html.xpath('//div[@id="productDescription"]//text()')).replace(" ", "")
-                        all_info = detail_actor + detail_info_1 + detail_info_2 + detail_info_3
-                        for each_actor in actor_amazon:
-                            if each_actor in all_info:
-                                w, h = get_imgsize(each[0])
-                                if w > 720 or not w:
-                                    return each[0]
-                                else:
-                                    json_data["poster"] = each[0]  # 用于 Google 搜图
-                                    json_data["poster_from"] = "Amazon"
-
-            # 有很多结果时（有下一页按钮），加演员名字重新搜索
-            if (
-                "s-pagination-item s-pagination-next s-pagination-button s-pagination-separator" in html_search
-                or len(title_result_list) > 5
-            ):
-                amazon_orginaltitle_actor = json_data.get("amazon_orginaltitle_actor")
-                if amazon_orginaltitle_actor and amazon_orginaltitle_actor not in originaltitle_amazon:
-                    originaltitle_amazon_list.append(f"{originaltitle_amazon} {amazon_orginaltitle_actor}")
-
-    return hd_pic_url
 
 
 def trailer_download(json_data, folder_new_path, folder_old_path, naming_rule):
@@ -421,8 +248,18 @@ def _get_big_thumb(json_data):
     number_lower_no_line = number_lower_line.replace("-", "")
     thumb_width = 0
 
+    if json_data["cover_from"] == 'dmm':
+        if json_data["cover"]:
+            thumb_width, thumb_height = get_imgsize(json_data["cover"])
+            # 对于存在 dmm 高清横版封面的影片, 尝试直接下载其竖版封面
+            if (thumb_width >= 1700) and (thumb_width >  thumb_height):
+                json_data["logs"] += "\n 🖼 HD Dmm Thumb found! ({})({}s)".format(
+                    json_data["cover_from"], get_used_time(start_time)
+                )
+                json_data["poster_big"] = True
+                return json_data
     # faleno.jp 番号检查，都是大图，返回即可
-    if json_data["cover_from"] in ["faleno", "dahlia"]:
+    elif json_data["cover_from"] in ["faleno", "dahlia"]:
         if json_data["cover"]:
             json_data["logs"] += "\n 🖼 HD Thumb found! ({})({}s)".format(
                 json_data["cover_from"], get_used_time(start_time)
@@ -514,7 +351,17 @@ def _get_big_poster(json_data):
         return json_data
 
     # 如果有大图时，直接下载
-    if json_data.get("poster_big") and get_imgsize(json_data["poster"])[1] > 600:
+    """
+    1. 有时 dmm thumb 是高清, 但是 poster 分辨率较低, 同时 Amazon 有高清封面 (SONE-425), 如果 Amazon 无高清封面, 则会截取 thumb
+        潜在bug: 可能会出现 Amazon 无高清封面,并且 dmm thumb 为非传统DVD图片格式的情况, 这会导致截取 thumb 生成的图片非标准 poster. 目前还未发现此情况)
+    2. 有时 faleno 与 dahlia 没有高清封面
+    因此需要增加 poster width > 800 的条件
+    """
+    if (
+        json_data.get("poster_big") and
+
+        get_imgsize(json_data["poster"])[0] > 800
+        ):
         json_data["image_download"] = True
         json_data["logs"] += f"\n 🖼 HD Poster found! ({json_data['poster_from']})({get_used_time(start_time)}s)"
         return json_data
@@ -530,6 +377,7 @@ def _get_big_poster(json_data):
         "有码",
         "有碼",
         "流出",
+        "无码流出",
         "无码破解",
         "無碼破解",
         "里番",
@@ -750,7 +598,7 @@ def poster_download(json_data, folder_new_path, poster_final_path):
             json_data["logs"] += "\n 🍀 Poster done! (copy cd-poster)(%ss)" % get_used_time(start_time)
             return True
 
-    # 勾选复制 thumb时：国产，复制thumb；无码，勾选不裁剪时，也复制thumb
+    # 勾选复制 thumb时：国产，复制thumb;无码，勾选不裁剪时，也复制thumb
     if thumb_path:
         mosaic = json_data["mosaic"]
         number = json_data["number"]

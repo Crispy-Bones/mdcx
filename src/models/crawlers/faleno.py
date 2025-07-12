@@ -283,4 +283,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 
 if __name__ == "__main__":
     # yapf: disable
-    print(main('fsdss-564'))  # print(main('mgold-017'))    # 地址带 -  # print(main('votan-034'))    # falenogroup.com 番号和数字加空格才能搜到  # print(main('fcdss-001'))    # 页面地址 flnc001  # print(main('FSDSS-037'))    # poster .replace('_1200-1', '_2125-1')  # print(main('flns-072'))       # outline 换行
+    # print(main('fsdss-564'))  # print(main('mgold-017'))    # 地址带 -  # print(main('votan-034'))    # falenogroup.com 番号和数字加空格才能搜到  # print(main('fcdss-001'))    # 页面地址 flnc001  # print(main('FSDSS-037'))    # poster .replace('_1200-1', '_2125-1')  # print(main('flns-072'))       # outline 换行
+    pass

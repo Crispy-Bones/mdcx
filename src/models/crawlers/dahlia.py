@@ -151,7 +151,16 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
             title = title.replace(" " + each, "")
         cover_url = get_cover(html_detail)  # 获取cover
         poster_url = (
-            cover_url.replace("_web_h4", "_h1").replace("_1200.jpg", "_2125.jpg").replace("_tsp.jpg", "_actor.jpg")
+            cover_url.replace("_web_h4", "_h1").replace("_tsp.jpg", "_actor.jpg")
+        )
+        poster_url = re.sub(
+            r'(-\d{3})(\.jpg)$|(_1200-)(\d+\.jpg)|(_1200.*\.jpg)',  # 正则表达式
+            lambda m: (
+                f"{m.group(1)}_2125{m.group(2)}" if m.group(1) else
+                f"_2125-{m.group(4)}" if m.group(3) else
+                "_2125.jpg"
+                ),  # 替换逻辑
+            poster_url
         )
         outline = get_outline(html_detail)
         tag = ""
@@ -243,4 +252,5 @@ def main(number, appoint_url="", log_info="", req_web="", language="jp"):
 if __name__ == "__main__":
     # yapf: disable
     # print(main('dhla-009'))
-    print(main('dldss-177'))
+    # print(main('DLDSS-102'))
+    pass

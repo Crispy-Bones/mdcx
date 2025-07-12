@@ -1073,7 +1073,7 @@ def newtdisk_creat_symlink(copy_flag, netdisk_path="", local_path=""):
 
             signal.show_log_text(
                 f"\n 🎉🎉🎉 All finished!!!({get_used_time(start_time)}s) Total {total} , "
-                f"Linked {link_num} , Copied {copy_num} , Skiped {skip_num} , Failed {fail_num} "
+                f"Linked {link_num} , Copied {copy_num} , Skiped {skip_num} , Failed {fail_num} \n"
             )
         else:
             signal.show_log_text(f" 🔴 网盘目录和本地目录不能为空！请重新设置！({get_used_time(start_time)}s)")
@@ -2139,7 +2139,7 @@ def check_and_clean_files():
     _clean_empty_fodlers(movie_path, "")
     signal.set_label_file_path.emit("🗑 清理完成！")
     signal.show_log_text(
-        f" 🎉🎉🎉 All finished!!!({get_used_time(start_time)}s) Total {total} , Success {succ} , Failed {fail} "
+        f" 🎉🎉🎉 All finished!!!({get_used_time(start_time)}s) Total {total} , Success {succ} , Failed {fail} \n"
     )
     signal.show_log_text("================================================================================")
     signal.reset_buttons_status.emit()

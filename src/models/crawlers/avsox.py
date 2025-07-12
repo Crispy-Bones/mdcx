@@ -234,6 +234,5 @@ if __name__ == "__main__":
     # print(main('051119-917'))
     # print(main('EDVR-063 '))
     # print(main('032620_001'))
-    print(
-        main("FC2-2101993")
-    )  # print(main('032620_001', 'https://avsox.click/cn/movie/cb8d28437cff4e90'))  # print(main('', 'https://avsox.click/cn/movie/0b4e42a270b9871b'))
+    # print(main("FC2-2101993"))  # print(main('032620_001', 'https://avsox.click/cn/movie/cb8d28437cff4e90'))  # print(main('', 'https://avsox.click/cn/movie/0b4e42a270b9871b'))
+    pass

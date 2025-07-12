@@ -18,7 +18,8 @@ from models.base.utils import convert_path, get_used_time
 from models.config.config import config
 from models.config.resources import resources
 from models.signals import signal
-
+from itertools import product
+from collections import defaultdict
 
 def replace_word(json_data):
     # 常见字段替换的字符
@@ -202,18 +203,182 @@ def replace_special_word(json_data):
     ]
     for key, value in config.special_word.items():
         for each in all_key_word:
-            json_data[each] = json_data[each].replace(key, value)
+            json_data[each] = json_data[each].replace(key, value[0])
+    
+def convert_half(string, operation_flags=0b111):
+    """
+    多阶段文本处理函数，支持敏感词替换、字符格式转换和清理
+    
+    主要功能：
+    1. 敏感词替换：根据配置替换包含屏蔽符号(●/○)的词汇，支持双向映射
+    2. 全角转半角：转换配置指定的全角字符为半角
+    3. 格式清理：移除非单词字符并转为大写
+    
+    参数：
+    string (str): 待处理的原始字符串
+    operation_flags (int): 位标志控制处理流程
+        - 0b001 (1): 执行敏感词替换
+        - 0b010 (2): 执行全角转半角
+        - 0b100 (4): 执行格式清理和大写转换
+    
+    返回：
+    list: 处理后的字符串列表，按未屏蔽版本优先排序，保持唯一性
+    """
+    
+    def generate_normalized_mapping(special_word):
+        """
+        生成标准化映射字典，用于全处理模式下的字符替换
+        处理规则：将包含●/○的键映射到去掉对应位置字符的值
+        示例："強●" => ("強制","強姦") 会生成映射："強●"->"強", "強制"->"強", "強姦"->"強"
+        """
+        normalized = defaultdict(set)
+        for key, values in special_word.items():
+            for v in values:
+                # 仅处理包含屏蔽符号的键
+                if "●" in key or "○" in key:
+                    # 计算屏蔽符号位置
+                    symbol = "●" if "●" in key else "○"
+                    index = key.index(symbol)
+                    # 生成标准化结果（去掉对应位置字符）
+                    normalized_target = v[:index] + v[index+1:] if index < len(v) else v
+                    # 建立双向映射
+                    normalized[key].add(normalized_target)
+                    normalized[v].add(normalized_target)
+        return {k: list(v) for k, v in normalized.items()}
 
+    # 初始化结果集合，保留原始字符串
+    results = {string}
 
-def convert_half(string):
-    # 替换敏感词
-    for key, value in config.special_word.items():
-        string = string.replace(key, value)
-    # 替换全角为半角
-    for each in config.full_half_char:
-        string = string.replace(each[0], each[1])
-    # 去除空格等符号
-    return re.sub(r"[\W_]", "", string).upper()
+    # ========================
+    # 阶段1：敏感词替换处理
+    # ========================
+    if operation_flags & 0b001:
+        # 构建反向映射字典（标准词 -> 所有可能的屏蔽形式）
+        reverse_special_word = defaultdict(list)
+        for key, values in config.special_word.items():
+            targets = values if isinstance(values, (tuple, list)) else [values]
+            for target in targets:
+                reverse_special_word[target].append(key)
+
+        # 合并正向和反向映射，构建完整替换字典
+        all_replacements = defaultdict(tuple)
+        # 添加正向映射
+        for key, values in config.special_word.items():
+            targets = values if isinstance(values, (tuple, list)) else [values]
+            all_replacements[key] = tuple(targets)
+        # 合并反向映射
+        for key, sources in reverse_special_word.items():
+            existing = list(all_replacements.get(key, ()))
+            existing.extend(sources)
+            all_replacements[key] = tuple(set(existing))  # 去重
+
+        # 根据处理模式选择映射表
+        replacements = (
+            generate_normalized_mapping(all_replacements) 
+            if (operation_flags & 0b100)  # 全处理模式需要标准化映射
+            else {k: list(v) for k, v in all_replacements.items()}
+        )
+
+        # 预处理：统一○为●以便匹配
+        processed_str = string.replace("○", "●")
+        # 按长度降序排序模式，确保长模式优先匹配
+        sorted_patterns = sorted(replacements.keys(), key=lambda x: (-len(x), x))
+        pattern = re.compile("|".join(map(re.escape, sorted_patterns)))
+        matches = pattern.finditer(processed_str)
+
+        if matches:
+            # 将匹配项按原始模式分组（相同模式的不同匹配归为一组）
+            pattern_groups = defaultdict(list)
+            for m in matches:
+                matched_pattern = m.group()
+                pattern_groups[matched_pattern].append(m)
+
+            # 初始化替换选项字典
+            filter_special = (operation_flags == 0b111)  # 全处理模式需要过滤屏蔽符号
+            replacement_options = {}
+            patterns = list(pattern_groups.keys())  # 获取唯一模式列表
+
+            # 判断是否需要添加原词选项（混合存在屏蔽词和未屏蔽词时才需要）
+            has_shielded = any(p in config.special_word for p in patterns)
+            has_unshielded = any(p not in config.special_word for p in patterns)
+            need_extra = has_shielded and has_unshielded and (operation_flags != 0b111)
+
+            # 为每个模式生成替换选项
+            for pattern in patterns:
+                candidates = replacements.get(pattern, [])
+                # 根据处理模式过滤候选词
+                filtered = [
+                    repl for repl in candidates
+                    if not filter_special or ("●" not in repl and "○" not in repl)
+                ]
+                
+                # 添加原词选项的条件处理（非全处理模式且当前模式无屏蔽符号）
+                if need_extra and ("●" not in pattern and "○" not in pattern):
+                    if pattern not in filtered:
+                        filtered.append(pattern)
+                
+                replacement_options[pattern] = filtered
+
+            # 生成所有可能的替换组合（笛卡尔积）
+            results = set()
+            for combo in product(*[replacement_options[p] for p in patterns]):
+                temp_str = string  # 使用原始字符串以保留○符号
+                replace_actions = []
+                
+                # 收集所有替换操作
+                for pattern_idx, chosen_repl in enumerate(combo):
+                    current_pattern = patterns[pattern_idx]
+                    for m in pattern_groups[current_pattern]:
+                        # 记录替换位置和内容
+                        replace_actions.append( (m.start(), m.end(), chosen_repl) )
+                
+                # 按倒序执行替换，避免位置偏移
+                replace_actions.sort(reverse=True, key=lambda x: x[0])
+                for start, end, repl in replace_actions:
+                    temp_str = temp_str[:start] + repl + temp_str[end:]
+                
+                results.add(temp_str)
+
+            # 结果排序：未屏蔽版本优先
+            results = sorted(
+                list(results),
+                key=lambda s: any(c in s for c in ('●', '○'))  # 包含屏蔽符号的排在后面
+            )
+        else:
+            results = [string]  # 无匹配时返回原始字符串
+
+    # ========================
+    # 阶段2：全角转半角处理
+    # ========================
+    conver_list = list(results)
+    if operation_flags & 0b010:
+        for i in range(len(conver_list)):
+            s = conver_list[i]
+            for full, half in config.full_half_char:
+                s = s.replace(full, half)
+            conver_list[i] = s
+
+    # ========================
+    # 阶段3：格式清理和大写转换
+    # ========================
+    if operation_flags & 0b100:
+        conver_list = [
+            # 移除非单词字符（保留字母、数字、汉字）并转为大写
+            re.sub(r"[\W_]+", "", s).upper()
+            for s in conver_list
+        ]
+
+    # ========================
+    # 最终处理：去重并保持顺序
+    # ========================
+    seen = set()
+    final_results = []
+    for s in conver_list:
+        if s and (s not in seen):  # 过滤空字符串并去重
+            seen.add(s)
+            final_results.append(s)
+    
+    return final_results
 
 
 def get_new_release(release):

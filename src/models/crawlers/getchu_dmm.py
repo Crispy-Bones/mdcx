@@ -55,4 +55,5 @@ if __name__ == "__main__":
     # print(main('OVA催眠性指導 ＃5宮島椿の場合')) # 都没有
     # print(main('GLOD-148')) # getchu 没有
     # print(main('(18禁アニメ) (無修正) 紅蓮 第1幕 「鬼」 (spursengine 960x720 h.264 aac)'))
-    print(main('誘惑 ～始発の章～'))  # print(main('ISTU-5391', appoint_url='http://www.getchu.com/soft.phtml?id=1180483'))  # print(main('SPY×FAMILY Vol.1 Blu-ray Disc＜初回生産限定版＞'))    # dmm 没有
+    # print(main('誘惑 ～始発の章～'))  # print(main('ISTU-5391', appoint_url='http://www.getchu.com/soft.phtml?id=1180483'))  # print(main('SPY×FAMILY Vol.1 Blu-ray Disc＜初回生産限定版＞'))    # dmm 没有
+    pass

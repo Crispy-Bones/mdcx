@@ -475,7 +475,7 @@ def get_nfo_data(json_data, file_path, movie_number):
     originaltitle_amazon = originaltitle
     if originaltitle:
         for key, value in config.special_word.items():
-            originaltitle_amazon = originaltitle_amazon.replace(value, key)
+            originaltitle_amazon = originaltitle_amazon.replace(value[0], key)
     actor = ",".join(xml_nfo.xpath("//actor/name/text()"))
     originalplot = "".join(xml_nfo.xpath("//originalplot/text()"))
     outline = ""
